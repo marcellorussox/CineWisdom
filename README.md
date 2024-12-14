@@ -43,11 +43,6 @@ Inserisci i file CSV del dataset MovieLens in `data/raw/`.
 
 ---
 
-## Struttura delle cartelle
-Vedi [Struttura del progetto](#struttura-del-progetto) per i dettagli.
-
----
-
 ## Valutazione
 Il sistema utilizza metriche come:
 - **Precision@k**
