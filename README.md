@@ -25,3 +25,41 @@
    Installa i pacchetti richiesti eseguendo:
    ```bash
    pip install -r requirements.txt
+   
+---
+
+## Installazione e utilizzo
+1. **Clona il repository**:
+   git clone <URL-del-repo> cd CineWisdom
+2. **Scarica il dataset MovieLens Small**:
+- [Link al dataset](https://grouplens.org/datasets/movielens/).
+
+3. **Organizza i dati nella cartella `data/raw/`**:
+Inserisci i file CSV del dataset MovieLens in `data/raw/`.
+
+4. **Avvia il progetto**:
+- Esegui gli script nella cartella `src/`.
+- Oppure usa il notebook `notebooks/exploratory_analysis.ipynb`.
+
+---
+
+## Struttura delle cartelle
+Vedi [Struttura del progetto](#struttura-del-progetto) per i dettagli.
+
+---
+
+## Valutazione
+Il sistema utilizza metriche come:
+- **Precision@k**
+- **Recall@k**
+- **Normalized Discounted Cumulative Gain (NDCG)**
+
+---
+
+## Licenza
+Questo progetto è distribuito sotto licenza MIT. Vedi il file `LICENSE` per i dettagli.
+
+---
+
+## Contributori
+Progetto sviluppato per un esame universitario di **Informatica Magistrale** dell'Università degli Studi di Napoli Federico II.
