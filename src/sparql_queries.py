@@ -2,6 +2,8 @@ import time
 from SPARQLWrapper import SPARQLWrapper, JSON
 
 
+# TODO le query non funzionano a dovere
+
 def query_wikidata_for_imdbid(imdb_ids):
     """
     Esegue una query batched a Wikidata per mappare gli ID di IMDb a ID di Wikidata.
