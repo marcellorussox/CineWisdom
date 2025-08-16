@@ -13,14 +13,12 @@
 ## Struttura del progetto
 - **`data/`**: Contiene i dataset grezzi, processati e i risultati delle query DBpedia.
 - **`src/`**: Include gli script principali per la gestione dei dati, le query SPARQL e l'implementazione del recommender system.
-- **`notebooks/`**: Contiene notebook Jupyter per analisi ed esperimenti.
-- **`tests/`**: Test unitari e di integrazione per verificare il corretto funzionamento del progetto.
-- **`docs/`**: Documentazione aggiuntiva (es. schema architetturale, riferimenti bibliografici).
+- **`kbrs.ipynb`**: Notebook Jupyter per analisi ed esperimenti.
 
 ---
 
 ## Prerequisiti
-1. **Python 3.7+**: Assicurati di avere un ambiente Python aggiornato.
+1. **Python 3.11+**: Assicurati di avere un ambiente Python aggiornato.
 2. **Dipendenze**:
    Installa i pacchetti richiesti eseguendo:
    ```bash
