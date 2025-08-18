@@ -37,7 +37,7 @@ Inserisci i file CSV del dataset MovieLens in `data/raw/`.
 
 4. **Avvia il progetto**:
 - Esegui gli script nella cartella `src/`.
-- Oppure usa il notebook `notebooks/exploratory_analysis.ipynb`.
+- Oppure usa il notebook `kbrs.ipynb`.
 
 ---
 
