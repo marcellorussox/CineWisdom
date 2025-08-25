@@ -1,5 +1,9 @@
 import time
 from SPARQLWrapper import SPARQLWrapper, JSON
+from .sparql_template import DBPEDIA_MOVIE_QUERY
+
+WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql"
+DBPEDIA_ENDPOINT = "https://dbpedia.org/sparql"
 
 
 # Function to query Wikidata in batches and map IMDb IDs to Wikidata IDs
@@ -8,23 +12,21 @@ def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1):
     Map a list of IMDb IDs to Wikidata QIDs using batched SPARQL queries.
 
     Step-by-step:
-    1. Define the Wikidata SPARQL endpoint.
-    2. Split the list of IMDb IDs into batches to avoid server overload.
-    3. For each batch:
+    1. Split the list of IMDb IDs into batches to avoid server overload.
+    2. For each batch:
         a. Construct a SPARQL query using VALUES to match multiple IMDb IDs.
         b. Execute the query using SPARQLWrapper.
         c. Extract the IMDb ID and corresponding Wikidata QID from the results.
         d. Store the mapping in a dictionary.
         e. Sleep for a short time between batches to avoid throttling.
-    4. Return a dictionary mapping IMDb ID -> Wikidata QID.
+    3. Return a dictionary mapping IMDb ID -> Wikidata QID.
     """
-    WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql"
     mappings = {}
 
     # Helper generator to create batches from a list
     def batch(iterable, size):
         for i in range(0, len(iterable), size):
-            yield iterable[i:i+size]
+            yield iterable[i:i + size]
 
     # Loop over each batch
     for chunk in batch(imdb_ids, batch_size):
@@ -60,26 +62,24 @@ def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1):
     return mappings
 
 
-# Function to query DBpedia in batches and get English abstracts, directors, and actors
+# Function to query DBpedia in batches and get additional information
 def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1):
     """
-    Retrieve English-language abstracts, directors, and actors from DBpedia for a list of Wikidata QIDs.
+    Retrieve comprehensive movie data from DBpedia for a list of Wikidata QIDs.
 
     Step-by-step:
-    1. Define the DBpedia SPARQL endpoint.
-    2. Split the list of Wikidata QIDs into batches to avoid large queries.
-    3. For each batch:
+    1. Split the list of Wikidata QIDs into batches to avoid large queries.
+    2. For each batch:
         a. Construct a SPARQL query using VALUES to match multiple QIDs.
         b. Include a UNION to handle Wikidata-to-DBpedia URL conversion if necessary.
-        c. Request English abstracts, director names, and actor names.
+        c. Request comprehensive movie data including title, director, actors, genres, etc.
         d. Execute the query and parse the JSON results.
         e. For each result:
             - Extract the Wikidata ID from the URI.
-            - Add the abstract, director, and actors to a dictionary.
-            - Ensure actors are stored as a list without duplicates.
+            - Add all extracted data to a dictionary, ensuring list fields don't contain duplicates.
         f. Sleep briefly between batches to reduce server load.
-    4. Ensure all Wikidata IDs have an entry in the final dictionary.
-    5. Return a dictionary mapping QID -> {abstract, director, actors}.
+    3. Ensure all Wikidata IDs have an entry in the final dictionary.
+    4. Return a dictionary mapping QID -> comprehensive movie data.
     """
     DBPEDIA_ENDPOINT = "http://dbpedia.org/sparql"
     data = {}
@@ -87,50 +87,23 @@ def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1):
     # Helper generator to create batches from a list
     def batch(iterable, size):
         for i in range(0, len(iterable), size):
-            yield iterable[i:i+size]
+            yield iterable[i:i + size]
+
+    # Define field mappings for list-based fields
+    list_fields = {
+        'actorName': 'actors',
+        'genre': 'genres',
+        'subject': 'subjects',
+        'country': 'countries',
+        'language': 'languages'
+    }
 
     # Loop over each batch
     for chunk in batch(wikidata_ids, batch_size):
         wd_values = " ".join([f"wd:{qid}" for qid in chunk])
 
-        # SPARQL query to get English abstract, director, and actors
-        dbpedia_query = f"""
-        PREFIX dbo:  <http://dbpedia.org/ontology/>
-        PREFIX wd:   <http://www.wikidata.org/entity/>
-        PREFIX owl:  <http://www.w3.org/2002/07/owl#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-        SELECT ?wdId ?film ?abstract ?directorName ?actorName WHERE {{
-          VALUES ?wdId {{ {wd_values} }}
-
-          {{
-            ?film owl:sameAs ?wdId .
-          }}
-          UNION
-          {{
-            BIND(IRI(CONCAT("http://wikidata.dbpedia.org/resource/",
-                            STRAFTER(STR(?wdId), "http://www.wikidata.org/entity/"))) AS ?wdDb)
-            ?film owl:sameAs ?wdDb .
-          }}
-
-          # abstract (English only)
-          OPTIONAL {{ ?film dbo:abstract ?abstract . FILTER(LANG(?abstract) = "en") }}
-
-          # director (English label only)
-          OPTIONAL {{
-            ?film dbo:director ?dir .
-            ?dir rdfs:label ?directorName .
-            FILTER(LANG(?directorName) = "en")
-          }}
-
-          # actors (English label only)
-          OPTIONAL {{
-            ?film dbo:starring ?actor .
-            ?actor rdfs:label ?actorName .
-            FILTER(LANG(?actorName) = "en")
-          }}
-        }}
-        """
+        # Enhanced SPARQL query to get additional information
+        dbpedia_query = DBPEDIA_MOVIE_QUERY.format(wd_values=wd_values)
 
         sparql = SPARQLWrapper(DBPEDIA_ENDPOINT)
         sparql.setQuery(dbpedia_query)
@@ -145,14 +118,36 @@ def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1):
                 if not qid:
                     continue
 
-                abstract = b.get("abstract", {}).get("value")
+                # Extract all values
+                title = b.get("title", {}).get("value")
                 director = b.get("directorName", {}).get("value")
-                actor = b.get("actorName", {}).get("value")
+                release_date = b.get("releaseDate", {}).get("value")
+                runtime = b.get("runtime", {}).get("value")
+                story = b.get("story", {}).get("value")
+                theme = b.get("theme", {}).get("value")
+                abstract = b.get("abstract", {}).get("value")
 
                 if qid not in data:
-                    data[qid] = {"abstract": abstract, "director": director, "actors": []}
-                if actor and actor not in data[qid]["actors"]:
-                    data[qid]["actors"].append(actor)
+                    data[qid] = {
+                        "title": title,
+                        "director": director,
+                        "actors": [],
+                        "genres": [],
+                        "subjects": [],
+                        "releaseDate": release_date,
+                        "runtime": runtime,
+                        "countries": [],
+                        "languages": [],
+                        "story": story,
+                        "theme": theme,
+                        "abstract": abstract
+                    }
+
+                # Process list-based fields using the mapping
+                for source_field, target_field in list_fields.items():
+                    value = b.get(source_field, {}).get("value")
+                    if value and value not in data[qid][target_field]:
+                        data[qid][target_field].append(value)
 
         except Exception as e:
             print(f"Error in DBpedia query (batch {chunk}): {e}")
@@ -160,8 +155,23 @@ def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1):
         # Pause to respect server load
         time.sleep(sleep)
 
-    # Ensure all Wikidata IDs have an entry
+    # Ensure all Wikidata IDs have an entry with all fields
+    default_entry = {
+        "title": None,
+        "director": None,
+        "actors": [],
+        "genres": [],
+        "subjects": [],
+        "releaseDate": None,
+        "runtime": None,
+        "countries": [],
+        "languages": [],
+        "story": None,
+        "theme": None,
+        "abstract": None
+    }
+
     for q in wikidata_ids:
-        data.setdefault(q, {"abstract": None, "director": None, "actors": []})
+        data.setdefault(q, default_entry.copy())
 
     return data
