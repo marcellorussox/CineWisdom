@@ -18,7 +18,7 @@ class MappingManager:
     def format_list_field(items):
         """Clean and format list-based fields (genres, subjects, countries, languages)."""
         if items and isinstance(items, list):
-            return ";".join(items)
+            return "|".join(items)
         return None
 
     def get_title(self, wikidata_id):
@@ -29,9 +29,7 @@ class MappingManager:
 
     def get_actors(self, wikidata_id):
         actors = self.dbpedia_data.get(wikidata_id, {}).get('actors')
-        if actors:
-            return ";".join(self.clean_actor_name(a) for a in actors)
-        return None
+        return self.format_list_field(actors)
 
     def get_genres(self, wikidata_id):
         genres = self.dbpedia_data.get(wikidata_id, {}).get('genres', [])
