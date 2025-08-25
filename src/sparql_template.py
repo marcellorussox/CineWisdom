@@ -1,29 +1,24 @@
 """
-Template for SPARQL queries used in the projecy
+Template for SPARQL queries used in the project.
+This template uses a federated query approach to link Wikidata and DBpedia.
 """
 
 DBPEDIA_MOVIE_QUERY = """
-PREFIX dbo:  <https://dbpedia.org/ontology/>
-PREFIX wd:   <https://www.wikidata.org/entity/>
-PREFIX owl:  <https://www.w3.org/2002/07/owl#>
-PREFIX rdfs: <https://www.w3.org/2000/01/rdf-schema#>
-PREFIX dct:  <https://purl.org/dc/terms/>
-PREFIX dbp:  <https://dbpedia.org/property/>
+PREFIX dbo:  <http://dbpedia.org/ontology/>
+PREFIX wd:   <http://www.wikidata.org/entity/>
+PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
+PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX dct:  <http://purl.org/dc/terms/>
+PREFIX dbp:  <http://dbpedia.org/property/>
 
 SELECT ?wdId ?film ?abstract ?directorName ?actorName ?title ?genre 
-       ?subject ?releaseDate ?runtime ?country ?language ?story ?theme 
+       ?subject ?releaseDate ?runtime ?country ?language ?story ?theme
 WHERE {{
   VALUES ?wdId {{ {wd_values} }}
-
-  {{
-    ?film owl:sameAs ?wdId .
-  }}
-  UNION
-  {{
-    BIND(IRI(CONCAT("http://wikidata.dbpedia.org/resource/",
-                    STRAFTER(STR(?wdId), "http://www.wikidata.org/entity/"))) AS ?wdDb)
-    ?film owl:sameAs ?wdDb .
-  }}
+  
+  # Federated query: ask the DBpedia endpoint to search for the Wikidata ID via owl:sameAs
+  ?film owl:sameAs ?wdId .
 
   # Title (English only)
   OPTIONAL {{ 
@@ -55,47 +50,9 @@ WHERE {{
     FILTER(LANG(?genre) = "en")
   }}
 
-  # subject (English label only)
-  OPTIONAL {{
-    ?film dct:subject ?subjectRes .
-    ?subjectRes rdfs:label ?subject .
-    FILTER(LANG(?subject) = "en")
-  }}
-
-  # releaseDate
-  OPTIONAL {{
-    ?film dbo:releaseDate ?releaseDate .
-  }}
-
   # runtime
   OPTIONAL {{
     ?film dbo:runtime ?runtime .
-  }}
-
-  # country (English label only)
-  OPTIONAL {{
-    ?film dbo:country ?countryRes .
-    ?countryRes rdfs:label ?country .
-    FILTER(LANG(?country) = "en")
-  }}
-
-  # language (English label only)
-  OPTIONAL {{
-    ?film dbo:language ?languageRes .
-    ?languageRes rdfs:label ?language .
-    FILTER(LANG(?language) = "en")
-  }}
-
-  # story (English only)
-  OPTIONAL {{
-    ?film dbp:story ?story .
-    FILTER(LANG(?story) = "en")
-  }}
-
-  # theme (English only)
-  OPTIONAL {{
-    ?film dbp:theme ?theme .
-    FILTER(LANG(?theme) = "en")
   }}
 }}
 """
