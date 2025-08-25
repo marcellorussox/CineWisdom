@@ -53,6 +53,7 @@ def clean_actor_name(name):
 # -----------------------------------------------------------
 def enrich_movies(movies_df, batch_size=25):
     if movies_df.empty:
+        print("Input DataFrame is empty. Returning empty DataFrame.")
         return pd.DataFrame()
 
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -60,14 +61,35 @@ def enrich_movies(movies_df, batch_size=25):
     # Load existing checkpoint if exists
     if os.path.exists(OUTPUT_FILE):
         print(f"Checkpoint found: '{OUTPUT_FILE}'. Resuming...")
-        processed_df = pd.read_csv(OUTPUT_FILE)
-        processed_ids = set(processed_df['imdbId'])
-        df_to_process = movies_df[~movies_df['imdbId'].isin(processed_ids)].copy()
-        print(f"Skipping {len(processed_ids)} already processed movies.")
+        try:
+            # Verifica se il file è vuoto
+            if os.path.getsize(OUTPUT_FILE) == 0:
+                print("Checkpoint file is empty. Starting from scratch.")
+                processed_df = pd.DataFrame()
+                processed_ids = set()
+            else:
+                processed_df = pd.read_csv(OUTPUT_FILE)
+                # Verifica se il DataFrame letto è vuoto
+                if processed_df.empty:
+                    print("Checkpoint file contains no data. Starting from scratch.")
+                    processed_ids = set()
+                else:
+                    processed_ids = set(processed_df['imdbId'])
+        except (pd.errors.EmptyDataError, KeyError) as e:
+            print(f"Error reading checkpoint file: {e}. Starting from scratch.")
+            processed_df = pd.DataFrame()
+            processed_ids = set()
     else:
         print("No checkpoint found. Starting from scratch.")
         processed_df = pd.DataFrame()
-        df_to_process = movies_df.copy()
+        processed_ids = set()
+
+    # Filtra i film già processati
+    df_to_process = movies_df[~movies_df['imdbId'].isin(processed_ids)].copy()
+
+    if df_to_process.empty:
+        print("No new movies to process. Returning existing data.")
+        return processed_df
 
     imdb_ids = df_to_process['imdbId'].tolist()
     progress_bar = tqdm(total=len(imdb_ids), desc="Enriching movies")
@@ -79,7 +101,7 @@ def enrich_movies(movies_df, batch_size=25):
         batch_df = df_to_process[df_to_process['imdbId'].isin(batch_ids)].copy()
 
         # Initialize columns
-        batch_df[['wikidataId', 'dbpediaAbstract', 'dbpediaDirector', 'dbpediaActor']] = None
+        batch_df[['wikidataId', 'dbpediaAbstract', 'dbpediaDirector', 'dbpediaActors']] = None
 
         # Query Wikidata and DBpedia
         wikidata_mappings = query_wikidata_for_imdbid(batch_ids)
@@ -102,7 +124,7 @@ def enrich_movies(movies_df, batch_size=25):
 
             batch_df['dbpediaAbstract'] = batch_df['wikidataId'].map(get_abstract)
             batch_df['dbpediaDirector'] = batch_df['wikidataId'].map(get_director)
-            batch_df['dbpediaActor'] = batch_df['wikidataId'].map(get_actors)
+            batch_df['dbpediaActors'] = batch_df['wikidataId'].map(get_actors)
 
         all_batches.append(batch_df)
         progress_bar.update(len(batch_ids))
@@ -117,7 +139,11 @@ def enrich_movies(movies_df, batch_size=25):
     else:
         final_df = processed_df
 
-    final_df.to_csv(OUTPUT_FILE, index=False)
-    print(f"\nEnrichment completed. Results saved in '{OUTPUT_FILE}'.")
+    # Salva solo se ci sono dati
+    if not final_df.empty:
+        final_df.to_csv(OUTPUT_FILE, index=False)
+        print(f"\nEnrichment completed. Results saved in '{OUTPUT_FILE}'.")
+    else:
+        print("\nNo data to save.")
 
     return final_df
