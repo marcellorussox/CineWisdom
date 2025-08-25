@@ -62,14 +62,14 @@ def enrich_movies(movies_df, batch_size=25):
     if os.path.exists(OUTPUT_FILE):
         print(f"Checkpoint found: '{OUTPUT_FILE}'. Resuming...")
         try:
-            # Verifica se il file è vuoto
+            # Verify if the path is empty
             if os.path.getsize(OUTPUT_FILE) == 0:
                 print("Checkpoint file is empty. Starting from scratch.")
                 processed_df = pd.DataFrame()
                 processed_ids = set()
             else:
                 processed_df = pd.read_csv(OUTPUT_FILE)
-                # Verifica se il DataFrame letto è vuoto
+                # Verify if the read Dataframe is empty
                 if processed_df.empty:
                     print("Checkpoint file contains no data. Starting from scratch.")
                     processed_ids = set()
@@ -84,7 +84,7 @@ def enrich_movies(movies_df, batch_size=25):
         processed_df = pd.DataFrame()
         processed_ids = set()
 
-    # Filtra i film già processati
+    # Filter already processed movies
     df_to_process = movies_df[~movies_df['imdbId'].isin(processed_ids)].copy()
 
     if df_to_process.empty:
@@ -139,7 +139,7 @@ def enrich_movies(movies_df, batch_size=25):
     else:
         final_df = processed_df
 
-    # Salva solo se ci sono dati
+    # Save only if there is data
     if not final_df.empty:
         final_df.to_csv(OUTPUT_FILE, index=False)
         print(f"\nEnrichment completed. Results saved in '{OUTPUT_FILE}'.")
