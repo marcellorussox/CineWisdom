@@ -29,6 +29,10 @@ class MappingManager:
 
     def get_actors(self, wikidata_id):
         actors = self.dbpedia_data.get(wikidata_id, {}).get('actors')
+        if actors:
+            # Apply the cleaning function to each actor name in the list
+            cleaned_actors = [re.sub(r'\s*\(.*\)', '', actor).strip() for actor in actors]
+            return self.format_list_field(cleaned_actors)
         return self.format_list_field(actors)
 
     def get_genres(self, wikidata_id):
@@ -60,7 +64,4 @@ class MappingManager:
         return self.dbpedia_data.get(wikidata_id, {}).get('theme')
 
     def get_abstract(self, wikidata_id):
-        abstract = self.dbpedia_data.get(wikidata_id, {}).get('abstract')
-        if abstract and isinstance(abstract, str):
-            return abstract.strip('"')
-        return abstract
+        return self.dbpedia_data.get(wikidata_id, {}).get('abstract')
