@@ -45,18 +45,18 @@ def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1):
         sparql.setQuery(query)
         sparql.setReturnFormat(JSON)
 
-        # Execute query and parse results
         try:
             results = sparql.query().convert()
-            for b in results.get("results", {}).get("bindings", []):
+            bindings = results.get("results", {}).get("bindings", [])
+
+            for b in bindings:
                 imdb_id = b.get("imdbId", {}).get("value")
                 wikidata_id = b.get("item", {}).get("value", "").split("/")[-1]
                 if imdb_id and wikidata_id:
                     mappings[imdb_id] = wikidata_id
         except Exception as e:
-            print(f"Error in Wikidata query (batch {chunk}): {e}")
+            print(f"[ERRORE] Errore nella query di Wikidata (batch {chunk}): {e}")
 
-        # Pause to respect server load
         time.sleep(sleep)
 
     return mappings
@@ -83,103 +83,60 @@ def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1):
     """
     data = {}
 
-    # Helper generator to create batches from a list
     def batch(iterable, size):
         for i in range(0, len(iterable), size):
             yield iterable[i:i + size]
 
-    # Define field mappings for string-based fields
     single_value_fields = {
         'title': 'title',
         'directorName': 'director',
-        'releaseDate': 'releaseDate',
         'runtime': 'runtime',
-        'story': 'story',
-        'theme': 'theme',
         'abstract': 'abstract'
     }
-
-    # Define field mappings for list-based fields
     list_fields = {
         'actorName': 'actors',
-        'genre': 'genres',
-        'subject': 'subjects',
-        'country': 'countries',
-        'language': 'languages'
     }
 
-    # Loop over each batch
     for chunk in batch(wikidata_ids, batch_size):
         wd_values = " ".join([f"wd:{qid}" for qid in chunk])
-
-        # Enhanced SPARQL query to get additional information
         dbpedia_query = DBPEDIA_MOVIE_QUERY.format(wd_values=wd_values)
 
         sparql = SPARQLWrapper(DBPEDIA_ENDPOINT)
         sparql.setQuery(dbpedia_query)
         sparql.setReturnFormat(JSON)
 
-        # Execute query and parse results
         try:
             results = sparql.query().convert()
-            for b in results.get("results", {}).get("bindings", []):
+            bindings = results.get("results", {}).get("bindings", [])
+
+            for b in bindings:
                 wd_uri = b.get("wdId", {}).get("value", "")
                 qid = wd_uri.rsplit("/", 1)[-1] if wd_uri else None
                 if not qid:
                     continue
 
-                # Inizializza l'entry per il film se non esiste già
                 if qid not in data:
                     data[qid] = {
-                        "title": None,
-                        "director": None,
-                        "actors": [],
-                        "genres": [],
-                        "subjects": [],
-                        "releaseDate": None,
-                        "runtime": None,
-                        "countries": [],
-                        "languages": [],
-                        "story": None,
-                        "theme": None,
-                        "abstract": None
+                        "title": None, "director": None, "runtime": None, "actors": [], "abstract": None
                     }
 
-                # Process string-based fields using the mapping
                 for sparql_key, data_key in single_value_fields.items():
                     value = b.get(sparql_key, {}).get("value")
                     if value:
                         data[qid][data_key] = value
 
-                # Process list-based fields using the mapping
                 for source_field, target_field in list_fields.items():
                     value = b.get(source_field, {}).get("value")
                     if value and value not in data[qid][target_field]:
                         data[qid][target_field].append(value)
 
         except Exception as e:
-            print(f"Error in DBpedia query (batch {chunk}): {e}")
-
-        # Pause to respect server load
+            print(f"[ERRORE] Errore nella query di DBpedia (batch {chunk}): {e}")
         time.sleep(sleep)
 
-    # Ensure all Wikidata IDs have an entry with all fields
     default_entry = {
-        "title": None,
-        "director": None,
-        "actors": [],
-        "genres": [],
-        "subjects": [],
-        "releaseDate": None,
-        "runtime": None,
-        "countries": [],
-        "languages": [],
-        "story": None,
-        "theme": None,
-        "abstract": None
+        "title": None, "director": None, "runtime": None, "actors": [], "abstract": None
     }
-
     for q in wikidata_ids:
         data.setdefault(q, default_entry.copy())
-
     return data
