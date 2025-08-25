@@ -96,10 +96,8 @@ def enrich_movies(movies_df, batch_size=25):
             batch_df = df_to_process[df_to_process['imdbId'].isin(batch_ids)].copy()
 
             # Initialize new columns for DBpedia data
-            new_columns = ['wikidataId', 'dbpediaDirector', 'dbpediaActors',
-                           'dbpediaGenres', 'dbpediaSubjects', 'dbpediaReleaseDate',
-                           'dbpediaRuntime', 'dbpediaCountries', 'dbpediaLanguages',
-                           'dbpediaStory', 'dbpediaTheme', 'dbpediaAbstract']
+            new_columns = ['wikidataId', 'dbpediaDirector',
+                           'dbpediaRuntime', 'dbpediaActors', 'dbpediaAbstract']
             batch_df[new_columns] = None
 
             # Query Wikidata and DBpedia
@@ -119,15 +117,8 @@ def enrich_movies(movies_df, batch_size=25):
 
                 # Map other fields
                 batch_df['dbpediaDirector'] = batch_df['wikidataId'].map(mapping_manager.get_director)
-                batch_df['dbpediaActors'] = batch_df['wikidataId'].map(mapping_manager.get_actors)
-                batch_df['dbpediaGenres'] = batch_df['wikidataId'].map(mapping_manager.get_genres)
-                batch_df['dbpediaSubjects'] = batch_df['wikidataId'].map(mapping_manager.get_subjects)
-                batch_df['dbpediaReleaseDate'] = batch_df['wikidataId'].map(mapping_manager.get_release_date)
                 batch_df['dbpediaRuntime'] = batch_df['wikidataId'].map(mapping_manager.get_runtime)
-                batch_df['dbpediaCountries'] = batch_df['wikidataId'].map(mapping_manager.get_countries)
-                batch_df['dbpediaLanguages'] = batch_df['wikidataId'].map(mapping_manager.get_languages)
-                batch_df['dbpediaStory'] = batch_df['wikidataId'].map(mapping_manager.get_story)
-                batch_df['dbpediaTheme'] = batch_df['wikidataId'].map(mapping_manager.get_theme)
+                batch_df['dbpediaActors'] = batch_df['wikidataId'].map(mapping_manager.get_actors)
                 batch_df['dbpediaAbstract'] = batch_df['wikidataId'].map(mapping_manager.get_abstract)
 
             # Save batch immediately
