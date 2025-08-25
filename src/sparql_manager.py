@@ -81,13 +81,23 @@ def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1):
     3. Ensure all Wikidata IDs have an entry in the final dictionary.
     4. Return a dictionary mapping QID -> comprehensive movie data.
     """
-    DBPEDIA_ENDPOINT = "http://dbpedia.org/sparql"
     data = {}
 
     # Helper generator to create batches from a list
     def batch(iterable, size):
         for i in range(0, len(iterable), size):
             yield iterable[i:i + size]
+
+    # Define field mappings for string-based fields
+    single_value_fields = {
+        'title': 'title',
+        'directorName': 'director',
+        'releaseDate': 'releaseDate',
+        'runtime': 'runtime',
+        'story': 'story',
+        'theme': 'theme',
+        'abstract': 'abstract'
+    }
 
     # Define field mappings for list-based fields
     list_fields = {
@@ -118,30 +128,28 @@ def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1):
                 if not qid:
                     continue
 
-                # Extract all values
-                title = b.get("title", {}).get("value")
-                director = b.get("directorName", {}).get("value")
-                release_date = b.get("releaseDate", {}).get("value")
-                runtime = b.get("runtime", {}).get("value")
-                story = b.get("story", {}).get("value")
-                theme = b.get("theme", {}).get("value")
-                abstract = b.get("abstract", {}).get("value")
-
+                # Inizializza l'entry per il film se non esiste già
                 if qid not in data:
                     data[qid] = {
-                        "title": title,
-                        "director": director,
+                        "title": None,
+                        "director": None,
                         "actors": [],
                         "genres": [],
                         "subjects": [],
-                        "releaseDate": release_date,
-                        "runtime": runtime,
+                        "releaseDate": None,
+                        "runtime": None,
                         "countries": [],
                         "languages": [],
-                        "story": story,
-                        "theme": theme,
-                        "abstract": abstract
+                        "story": None,
+                        "theme": None,
+                        "abstract": None
                     }
+
+                # Process string-based fields using the mapping
+                for sparql_key, data_key in single_value_fields.items():
+                    value = b.get(sparql_key, {}).get("value")
+                    if value:
+                        data[qid][data_key] = value
 
                 # Process list-based fields using the mapping
                 for source_field, target_field in list_fields.items():
