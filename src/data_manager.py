@@ -1,9 +1,11 @@
-import time
-import re
-import pandas as pd
 import os
-from .sparql_queries import query_wikidata_for_imdbid, query_dbpedia_for_data
+import time
+
+import pandas as pd
 from tqdm import tqdm
+
+from .sparql_manager import query_wikidata_for_imdbid, query_dbpedia_for_data
+from .mapping_manager import MappingManager
 
 OUTPUT_FOLDER = "data/processed"
 OUTPUT_FILE = os.path.join(OUTPUT_FOLDER, "dbpedia_data.csv")
@@ -41,13 +43,6 @@ def join_dataframes(df1, df2, on='movieId', how='inner'):
 
 
 # -----------------------------------------------------------
-# Clean an actor name by removing any text inside parentheses
-# -----------------------------------------------------------
-def clean_actor_name(name):
-    return re.sub(r"\s*\(.*?\)", "", name).strip()
-
-
-# -----------------------------------------------------------
 # Enrich movies DataFrame with Wikidata and DBpedia data
 # Robust checkpointing to avoid duplication
 # -----------------------------------------------------------
@@ -62,14 +57,12 @@ def enrich_movies(movies_df, batch_size=25):
     if os.path.exists(OUTPUT_FILE):
         print(f"Checkpoint found: '{OUTPUT_FILE}'. Resuming...")
         try:
-            # Verify if the path is empty
             if os.path.getsize(OUTPUT_FILE) == 0:
                 print("Checkpoint file is empty. Starting from scratch.")
                 processed_df = pd.DataFrame()
                 processed_ids = set()
             else:
                 processed_df = pd.read_csv(OUTPUT_FILE)
-                # Verify if the read Dataframe is empty
                 if processed_df.empty:
                     print("Checkpoint file contains no data. Starting from scratch.")
                     processed_ids = set()
@@ -94,56 +87,76 @@ def enrich_movies(movies_df, batch_size=25):
     imdb_ids = df_to_process['imdbId'].tolist()
     progress_bar = tqdm(total=len(imdb_ids), desc="Enriching movies")
 
-    all_batches = []  # store processed batches to append at the end
+    # Determine if we need to write header
+    write_header = not os.path.exists(OUTPUT_FILE) or os.path.getsize(OUTPUT_FILE) == 0
 
     for i in range(0, len(imdb_ids), batch_size):
-        batch_ids = imdb_ids[i:i + batch_size]
-        batch_df = df_to_process[df_to_process['imdbId'].isin(batch_ids)].copy()
+        try:
+            batch_ids = imdb_ids[i:i + batch_size]
+            batch_df = df_to_process[df_to_process['imdbId'].isin(batch_ids)].copy()
 
-        # Initialize columns
-        batch_df[['wikidataId', 'dbpediaAbstract', 'dbpediaDirector', 'dbpediaActors']] = None
+            # Initialize new columns for DBpedia data
+            new_columns = ['wikidataId', 'dbpediaDirector', 'dbpediaActors',
+                           'dbpediaGenres', 'dbpediaSubjects', 'dbpediaReleaseDate',
+                           'dbpediaRuntime', 'dbpediaCountries', 'dbpediaLanguages',
+                           'dbpediaStory', 'dbpediaTheme', 'dbpediaAbstract']
+            batch_df[new_columns] = None
 
-        # Query Wikidata and DBpedia
-        wikidata_mappings = query_wikidata_for_imdbid(batch_ids)
-        if wikidata_mappings:
-            dbpedia_data = query_dbpedia_for_data(list(wikidata_mappings.values()))
+            # Query Wikidata and DBpedia
+            wikidata_mappings = query_wikidata_for_imdbid(batch_ids)
+            if wikidata_mappings:
+                dbpedia_data = query_dbpedia_for_data(list(wikidata_mappings.values()))
 
-            batch_df['wikidataId'] = batch_df['imdbId'].map(wikidata_mappings)
+                # Create mapping manager instance
+                mapping_manager = MappingManager(dbpedia_data)
 
-            def get_abstract(wikidata_id):
-                return dbpedia_data.get(wikidata_id, {}).get('abstract')
+                batch_df['wikidataId'] = batch_df['imdbId'].map(wikidata_mappings)
 
-            def get_director(wikidata_id):
-                return dbpedia_data.get(wikidata_id, {}).get('director')
+                # Apply all mappings using the MappingManager
+                # Update title only if DBpedia title is available
+                dbpedia_titles = batch_df['wikidataId'].map(mapping_manager.get_title)
+                batch_df.loc[dbpedia_titles.notna(), 'title'] = dbpedia_titles[dbpedia_titles.notna()]
 
-            def get_actors(wikidata_id):
-                actors = dbpedia_data.get(wikidata_id, {}).get('actors')
-                if actors:
-                    return "; ".join(clean_actor_name(a) for a in actors)
-                return None
+                # Map other fields
+                batch_df['dbpediaDirector'] = batch_df['wikidataId'].map(mapping_manager.get_director)
+                batch_df['dbpediaActors'] = batch_df['wikidataId'].map(mapping_manager.get_actors)
+                batch_df['dbpediaGenres'] = batch_df['wikidataId'].map(mapping_manager.get_genres)
+                batch_df['dbpediaSubjects'] = batch_df['wikidataId'].map(mapping_manager.get_subjects)
+                batch_df['dbpediaReleaseDate'] = batch_df['wikidataId'].map(mapping_manager.get_release_date)
+                batch_df['dbpediaRuntime'] = batch_df['wikidataId'].map(mapping_manager.get_runtime)
+                batch_df['dbpediaCountries'] = batch_df['wikidataId'].map(mapping_manager.get_countries)
+                batch_df['dbpediaLanguages'] = batch_df['wikidataId'].map(mapping_manager.get_languages)
+                batch_df['dbpediaStory'] = batch_df['wikidataId'].map(mapping_manager.get_story)
+                batch_df['dbpediaTheme'] = batch_df['wikidataId'].map(mapping_manager.get_theme)
+                batch_df['dbpediaAbstract'] = batch_df['wikidataId'].map(mapping_manager.get_abstract)
 
-            batch_df['dbpediaAbstract'] = batch_df['wikidataId'].map(get_abstract)
-            batch_df['dbpediaDirector'] = batch_df['wikidataId'].map(get_director)
-            batch_df['dbpediaActors'] = batch_df['wikidataId'].map(get_actors)
+            # Save batch immediately
+            if write_header:
+                batch_df.to_csv(OUTPUT_FILE, index=False, mode='w')
+                write_header = False
+            else:
+                batch_df.to_csv(OUTPUT_FILE, index=False, mode='a', header=False)
 
-        all_batches.append(batch_df)
-        progress_bar.update(len(batch_ids))
-        time.sleep(1)
+            progress_bar.update(len(batch_ids))
+            time.sleep(1)
+
+        except Exception as e:
+            print(f"Error processing batch {i // batch_size + 1}: {e}")
+            print("Saving processed batches before exiting...")
+            progress_bar.close()
+
+            # Read all processed data to return
+            if os.path.exists(OUTPUT_FILE) and os.path.getsize(OUTPUT_FILE) > 0:
+                return pd.read_csv(OUTPUT_FILE)
+            else:
+                return processed_df
 
     progress_bar.close()
 
-    # Concatenate previous processed data with new batches
-    if all_batches:
-        new_data = pd.concat(all_batches, ignore_index=True)
-        final_df = pd.concat([processed_df, new_data], ignore_index=True)
-    else:
-        final_df = processed_df
+    print("Movie enrichment completed.")
 
-    # Save only if there is data
-    if not final_df.empty:
-        final_df.to_csv(OUTPUT_FILE, index=False)
-        print(f"\nEnrichment completed. Results saved in '{OUTPUT_FILE}'.")
+    # Return all processed data
+    if os.path.exists(OUTPUT_FILE) and os.path.getsize(OUTPUT_FILE) > 0:
+        return pd.read_csv(OUTPUT_FILE)
     else:
-        print("\nNo data to save.")
-
-    return final_df
+        return processed_df
