@@ -25,7 +25,12 @@ class MappingManager:
         return self.dbpedia_data.get(wikidata_id, {}).get('title')
 
     def get_director(self, wikidata_id):
-        return self.dbpedia_data.get(wikidata_id, {}).get('director')
+        director = self.dbpedia_data.get(wikidata_id, {}).get('director')
+        if director and isinstance(director, str):
+            # Apply the cleaning function to each actor name in the list
+            cleaned_director = re.sub(r'\s*\(.*\)', '', director).strip()
+            return cleaned_director
+        return director
 
     def get_actors(self, wikidata_id):
         actors = self.dbpedia_data.get(wikidata_id, {}).get('actors')
