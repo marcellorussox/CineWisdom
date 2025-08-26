@@ -7,33 +7,18 @@ DBPEDIA_ENDPOINT = "https://dbpedia.org/sparql"
 
 
 # Function to query Wikidata in batches and map IMDb IDs to Wikidata IDs
-def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1):
+def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1, max_retries=3):
     """
-    Map a list of IMDb IDs to Wikidata QIDs using batched SPARQL queries.
-
-    Step-by-step:
-    1. Split the list of IMDb IDs into batches to avoid server overload.
-    2. For each batch:
-        a. Construct a SPARQL query using VALUES to match multiple IMDb IDs.
-        b. Execute the query using SPARQLWrapper.
-        c. Extract the IMDb ID and corresponding Wikidata QID from the results.
-        d. Store the mapping in a dictionary.
-        e. Sleep for a short time between batches to avoid throttling.
-    3. Return a dictionary mapping IMDb ID -> Wikidata QID.
+    Map a list of IMDb IDs to Wikidata QIDs using batched SPARQL queries with retries.
     """
     mappings = {}
 
-    # Helper generator to create batches from a list
     def batch(iterable, size):
         for i in range(0, len(iterable), size):
             yield iterable[i:i + size]
 
-    # Loop over each batch
     for chunk in batch(imdb_ids, batch_size):
-        # Format batch values for SPARQL VALUES clause
         imdb_values = " ".join([f'"{i}"' for i in chunk])
-
-        # SPARQL query to get Wikidata QIDs for each IMDb ID
         query = f"""
         SELECT ?item ?imdbId WHERE {{
           VALUES ?imdbId {{ {imdb_values} }}
@@ -45,17 +30,22 @@ def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1):
         sparql.setQuery(query)
         sparql.setReturnFormat(JSON)
 
-        try:
-            results = sparql.query().convert()
-            bindings = results.get("results", {}).get("bindings", [])
+        for attempt in range(max_retries):
+            try:
+                results = sparql.query().convert()
+                bindings = results.get("results", {}).get("bindings", [])
 
-            for b in bindings:
-                imdb_id = b.get("imdbId", {}).get("value")
-                wikidata_id = b.get("item", {}).get("value", "").split("/")[-1]
-                if imdb_id and wikidata_id:
-                    mappings[imdb_id] = wikidata_id
-        except Exception as e:
-            print(f"[ERRORE] Errore nella query di Wikidata (batch {chunk}): {e}")
+                for b in bindings:
+                    imdb_id = b.get("imdbId", {}).get("value")
+                    wikidata_id = b.get("item", {}).get("value", "").split("/")[-1]
+                    if imdb_id and wikidata_id:
+                        mappings[imdb_id] = wikidata_id
+
+                # Success, break out of the retry loop
+                break
+            except Exception as e:
+                print(f"[ERRORE] Tentativo {attempt + 1}/{max_retries} fallito per il batch: {chunk}. Errore: {e}")
+                time.sleep(sleep * (attempt + 1))  # Exponential backoff
 
         time.sleep(sleep)
 
@@ -63,24 +53,7 @@ def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1):
 
 
 # Function to query DBpedia in batches and get additional information
-def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1):
-    """
-    Retrieve comprehensive movie data from DBpedia for a list of Wikidata QIDs.
-
-    Step-by-step:
-    1. Split the list of Wikidata QIDs into batches to avoid large queries.
-    2. For each batch:
-        a. Construct a SPARQL query using VALUES to match multiple QIDs.
-        b. Include a UNION to handle Wikidata-to-DBpedia URL conversion if necessary.
-        c. Request comprehensive movie data including title, director, actors, genres, etc.
-        d. Execute the query and parse the JSON results.
-        e. For each result:
-            - Extract the Wikidata ID from the URI.
-            - Add all extracted data to a dictionary, ensuring list fields don't contain duplicates.
-        f. Sleep briefly between batches to reduce server load.
-    3. Ensure all Wikidata IDs have an entry in the final dictionary.
-    4. Return a dictionary mapping QID -> comprehensive movie data.
-    """
+def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1, max_retries=3):
     data = {}
 
     def batch(iterable, size):
@@ -105,33 +78,38 @@ def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1):
         sparql.setQuery(dbpedia_query)
         sparql.setReturnFormat(JSON)
 
-        try:
-            results = sparql.query().convert()
-            bindings = results.get("results", {}).get("bindings", [])
+        for attempt in range(max_retries):
+            try:
+                results = sparql.query().convert()
+                bindings = results.get("results", {}).get("bindings", [])
 
-            for b in bindings:
-                wd_uri = b.get("wdId", {}).get("value", "")
-                qid = wd_uri.rsplit("/", 1)[-1] if wd_uri else None
-                if not qid:
-                    continue
+                for b in bindings:
+                    wd_uri = b.get("wdId", {}).get("value", "")
+                    qid = wd_uri.rsplit("/", 1)[-1] if wd_uri else None
+                    if not qid:
+                        continue
 
-                if qid not in data:
-                    data[qid] = {
-                        "title": None, "director": None, "runtime": None, "actors": [], "abstract": None
-                    }
+                    if qid not in data:
+                        data[qid] = {
+                            "title": None, "director": None, "runtime": None, "actors": [], "abstract": None
+                        }
 
-                for sparql_key, data_key in single_value_fields.items():
-                    value = b.get(sparql_key, {}).get("value")
-                    if value:
-                        data[qid][data_key] = value
+                    for sparql_key, data_key in single_value_fields.items():
+                        value = b.get(sparql_key, {}).get("value")
+                        if value:
+                            data[qid][data_key] = value
 
-                for source_field, target_field in list_fields.items():
-                    value = b.get(source_field, {}).get("value")
-                    if value and value not in data[qid][target_field]:
-                        data[qid][target_field].append(value)
+                    for source_field, target_field in list_fields.items():
+                        value = b.get(source_field, {}).get("value")
+                        if value and value not in data[qid][target_field]:
+                            data[qid][target_field].append(value)
 
-        except Exception as e:
-            print(f"[ERRORE] Errore nella query di DBpedia (batch {chunk}): {e}")
+                # Success, break out of the retry loop
+                break
+            except Exception as e:
+                print(f"[ERRORE] Tentativo {attempt + 1}/{max_retries} fallito per il batch: {chunk}. Errore: {e}")
+                time.sleep(sleep * (attempt + 1))  # Exponential backoff
+
         time.sleep(sleep)
 
     default_entry = {
