@@ -80,7 +80,7 @@ def enrich_movies(movies_df, batch_size=25):
         return processed_df
 
     imdb_ids = df_to_process['imdbId'].tolist()
-    progress_bar = tqdm(total=len(imdb_ids), desc="Enriching movies")
+    progress_bar = tqdm(total=len(imdb_ids), desc="Enriching movies", position=0, leave=True)
 
     for i in range(0, len(imdb_ids), batch_size):
         try:
@@ -90,7 +90,10 @@ def enrich_movies(movies_df, batch_size=25):
             new_columns = ['wikidataId', 'dbpediaDirector', 'dbpediaRuntime', 'dbpediaActors', 'dbpediaAbstract']
             for col in new_columns:
                 if col not in batch_df.columns:
-                    batch_df[col] = None
+                    if col == 'dbpediaActors':
+                        batch_df[col] = [[] for _ in range(len(batch_df))]
+                    else:
+                        batch_df[col] = None
 
             wikidata_mappings = query_wikidata_for_imdbid(batch_ids)
 
@@ -124,21 +127,18 @@ def enrich_movies(movies_df, batch_size=25):
             time.sleep(1)
 
         except Exception as e:
-            print(f"Error processing batch {i // batch_size + 1}: {e}")
+            print(f"\nError processing batch {i // batch_size + 1}: {e}")
             print("Saving processed batches before exiting...")
             progress_bar.close()
 
-            # Read all processed data to return
             if os.path.exists(OUTPUT_FILE) and os.path.getsize(OUTPUT_FILE) > 0:
                 return pd.read_csv(OUTPUT_FILE)
             else:
                 return processed_df
 
     progress_bar.close()
-
     print("Movie enrichment completed.")
 
-    # Return all processed data
     if os.path.exists(OUTPUT_FILE) and os.path.getsize(OUTPUT_FILE) > 0:
         return pd.read_csv(OUTPUT_FILE)
     else:
