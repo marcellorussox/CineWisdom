@@ -64,4 +64,12 @@ class MappingManager:
         return self.dbpedia_data.get(wikidata_id, {}).get('theme')
 
     def get_abstract(self, wikidata_id):
-        return self.dbpedia_data.get(wikidata_id, {}).get('abstract')
+        abstract = self.dbpedia_data.get(wikidata_id, {}).get('abstract')
+        if abstract and isinstance(abstract, str):
+            cleaned_abstract = re.sub(r'[\r\n]+', ', ', abstract).strip()
+
+            if cleaned_abstract.startswith(', '):
+                cleaned_abstract = cleaned_abstract[2:]
+
+            return cleaned_abstract
+        return abstract
