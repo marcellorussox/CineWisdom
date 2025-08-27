@@ -145,42 +145,5 @@ def enrich_movies(movies_df, batch_size=25):
         return processed_df
 
 
-# -----------------------------------------------------------
-# Function to clean the data and report statistics
-# -----------------------------------------------------------
-def clean_data(df, output_file='cleaned_data.csv'):
-    """
-    Cleans a DataFrame by removing rows with any missing values and reports cleaning statistics.
 
-    Args:
-        df (pd.DataFrame): The input DataFrame.
-        output_file (str): The name of the file to save the cleaned data.
-
-    Returns:
-        pd.DataFrame: The cleaned DataFrame.
-    """
-    # Count missing values before cleaning
-    initial_row_count = len(df)
-    missing_values_per_column = df.isnull().sum()
-
-    # Drop rows with any missing values
-    cleaned_df = df.dropna()
-
-    # Count records after cleaning and calculate deleted records
-    final_row_count = len(cleaned_df)
-    deleted_records_count = initial_row_count - final_row_count
-
-    # Print the statistics
-    print("\n--- Cleaning Report ---")
-    print(f"Initial record count: {initial_row_count}")
-    print(f"Cleaned record count: {final_row_count}")
-    print(f"Total records deleted: {deleted_records_count}")
-    print("\nEmpty records per column (before cleaning):")
-    print(missing_values_per_column.to_string())
-
-    # Save the cleaned data to a new CSV file
-    cleaned_df.to_csv(output_file, index=False)
-    print(f"\nCleaned data saved to '{output_file}'.")
-
-    return cleaned_df
 
