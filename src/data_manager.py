@@ -9,6 +9,7 @@ from .mapping_manager import MappingManager
 
 OUTPUT_FOLDER = "data/processed"
 OUTPUT_FILE = os.path.join(OUTPUT_FOLDER, "dbpedia_data.csv")
+CLEANED_FILE = os.path.join(OUTPUT_FOLDER, "dbpedia_data_cleaned.csv")
 
 
 # -----------------------------------------------------------
@@ -42,12 +43,75 @@ def join_dataframes(df1, df2, on='movieId', how='inner'):
     return pd.merge(df1, df2, on=on, how=how)
 
 
+def clean_partial_rows(df, output_file=CLEANED_FILE):
+    """
+    Cleans a DataFrame by removing rows with empty values and prints statistics.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+        output_file (str): The name of the file to save the cleaned data.
+
+    Returns:
+        pd.DataFrame: The cleaned DataFrame.
+    """
+    # Count empty values before cleaning the data
+    initial_row_count = len(df)
+    missing_values_per_column = df.isnull().sum()
+
+    # Remove rows with any empty values
+    cleaned_df = df.dropna()
+
+    # Count rows after cleaning
+    final_row_count = len(cleaned_df)
+    deleted_records_count = initial_row_count - final_row_count
+
+    # Print statistics
+    print("\n--- Cleaning Report ---")
+    print(f"Total records before cleaning: {initial_row_count}")
+    print(f"Total records after cleaning: {final_row_count}")
+    print(f"Deleted records: {deleted_records_count}")
+    print("\nEmpty records per column (before cleaning):")
+    print(missing_values_per_column.to_string())
+
+    # Save the cleaned DataFrame to a new CSV file
+    cleaned_df.to_csv(output_file, index=False)
+    print(f"\nCleaned data has been saved to '{output_file}'.")
+
+    return cleaned_df
+
+
+def drop_columns(df, columns_to_drop):
+    """
+    Elimina una o più colonne da un DataFrame di pandas.
+
+    Args:
+        df (pd.DataFrame): Il DataFrame di input.
+        columns_to_drop (str o list): Il nome della colonna (stringa)
+                                      o una lista di nomi delle colonne da eliminare.
+
+    Returns:
+        pd.DataFrame: Un nuovo DataFrame senza le colonne specificate.
+    """
+    # Se il nome della colonna non è in una lista, lo convertiamo in una lista
+    if isinstance(columns_to_drop, str):
+        columns_to_drop = [columns_to_drop]
+
+    # Controlla se le colonne specificate esistono nel DataFrame
+    for col in columns_to_drop:
+        if col not in df.columns:
+            print(f"Attenzione: La colonna '{col}' non esiste nel DataFrame.")
+            return df.copy() # Restituisce una copia del DataFrame originale
+
+    # Utilizziamo .drop() per eliminare le colonne. axis=1 indica di operare sulle colonne.
+    # inplace=False crea una copia del DataFrame modificato senza alterare l'originale.
+    return df.drop(columns=columns_to_drop, axis=1, inplace=False)
+
+
 # -----------------------------------------------------------
 # Enrich movies DataFrame with Wikidata and DBpedia data
 # Robust checkpointing to avoid duplication
 # -----------------------------------------------------------
 def enrich_movies(movies_df, batch_size=25):
-
     if movies_df.empty:
         print("Input DataFrame is empty. Returning empty DataFrame.")
         return pd.DataFrame()
@@ -143,7 +207,3 @@ def enrich_movies(movies_df, batch_size=25):
         return pd.read_csv(OUTPUT_FILE)
     else:
         return processed_df
-
-
-
-
