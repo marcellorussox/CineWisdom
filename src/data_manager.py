@@ -422,9 +422,7 @@ def compress_kbrs_dataset(df: pd.DataFrame, n_components: int = 128) -> pd.DataF
     print(f"Fase 2/3: Applicazione di TruncatedSVD con {n_components} componenti...")
     svd = TruncatedSVD(n_components=n_components, random_state=42)
 
-    with tqdm(total=1, desc="Calcolo SVD") as pbar:
-        embeddings = svd.fit_transform(sparse_matrix)
-        pbar.update(1)
+    embeddings = svd.fit_transform(sparse_matrix)
 
     print("Fase 3/3: Creazione del nuovo DataFrame compresso...")
     # Crea un nuovo DataFrame con le feature compresse
