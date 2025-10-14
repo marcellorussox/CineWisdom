@@ -1,19 +1,20 @@
 # CineWisdom
 
-**CineWisdom** è un sistema di raccomandazione di film basato sulla conoscenza, che utilizza il dataset MovieLens Small e arricchisce i metadati dei film con informazioni estratte da DBpedia tramite query SPARQL. Il sistema integra inoltre tecniche di *Multi-Armed Bandit (MAB)* per bilanciare esplorazione e sfruttamento, migliorando le raccomandazioni.
+**CineWisdom** è un sistema di raccomandazione di film basato sulla conoscenza, che utilizza il dataset MovieLens Small e arricchisce i metadati dei film con informazioni estratte da DBpedia/Wikidata tramite query SPARQL. Il sistema integra inoltre *Multi-Armed Bandit (MAB)* con Thompson Sampling per bilanciare esplorazione e sfruttamento nelle raccomandazioni.
 
 ## Funzionalità principali
 - **Estrazione di conoscenze**: Recupera informazioni avanzate sui film (es. registi, attori, generi) da DBpedia.
 - **Sistema di raccomandazione basato su conoscenza**: Suggerisce film in base alle caratteristiche e preferenze dell'utente.
-- **Tecniche di Multi-Armed Bandit**: Implementa algoritmi come Epsilon-Greedy e UCB per ottimizzare le raccomandazioni.
+- **Tecniche di Multi-Armed Bandit**: Implementa Thompson Sampling e una logica di reward personalizzata per ridurre il bias di popolarità.
 - **Valutazione rigorosa**: Analizza la precisione e la qualità del sistema con metriche standard.
 
 ---
 
 ## Struttura del progetto
-- **`datasets/`**: Contiene i dataset grezzi, processati e i risultati delle query DBpedia.
-- **`src/`**: Include gli script principali per la gestione dei dati, le query SPARQL e l'implementazione del recommender system.
-- **`kbrs.ipynb`**: Notebook Jupyter per analisi ed esperimenti.
+- **`datasets/`**: Contiene i dataset grezzi (`datasets/raw/`), i processati (`datasets/processed/`) e i risultati dell'arricchimento.
+- **`src/`**: Script per gestione dati, query SPARQL, KBRS, MAB e simulazione/visualizzazione.
+- **`plots/`**: Output dei grafici generati (es. `selection_rate.png`, `cumulative_reward.png`).
+- **`plots/`**: Il flusso è replicato in un notebook o in script Python che richiamano i moduli in `src/`.
 
 ---
 
@@ -23,30 +24,36 @@
    Installa i pacchetti richiesti eseguendo:
    ```bash
    pip install -r requirements.txt
-   ```
    
 ---
 
 ## Installazione e utilizzo
 1. **Clona il repository**:
-   git clone <URL-del-repo> cd CineWisdom
-2. **Scarica il dataset MovieLens Small**:
-- [Link al dataset](https://grouplens.org/datasets/movielens/).
+   ```bash
+   git clone <URL-del-repo>
+   cd CineWisdom
+   ```
+2. **Scarica MovieLens (Small)**:
+   - [https://grouplens.org/datasets/movielens/](https://grouplens.org/datasets/movielens/)
+3. **Organizza i dati**: copia i CSV in `datasets/raw/` con questi nomi:
+   - `datasets/raw/movies.csv`
+   - `datasets/raw/links.csv`
+   - `datasets/raw/ratings.csv`
+4. **Installa le dipendenze**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-3. **Organizza i dati nella cartella `datasets/raw/`**:
-Inserisci i file CSV del dataset MovieLens in `datasets/raw/`.
-
-4. **Avvia il progetto**:
-- Esegui gli script nella cartella `src/`.
-- Oppure usa il notebook `kbrs.ipynb`.
+5. **Output dei grafici**: i plot sono salvati in `plots/` come `selection_rate.png` e `cumulative_reward.png`.
 
 ---
 
-## Valutazione
-Il sistema utilizza metriche come:
-- **Precision@k**
-- **Recall@k**
-- **Normalized Discounted Cumulative Gain (NDCG)**
+## Logica di Reward (MAB)
+Nel modulo `src/simulation/simulator.py`, la classe `MABSimulator` implementa un reward binario orientato all'esplorazione per ridurre il bias di popolarità:
+- **Successo (1)** se tra i film raccomandati esiste almeno un film non ancora visto dall'utente che appartiene ai suoi film preferiti (preferenze derivate da rating ≥ 4.0 su altri film).
+- **Fallimento (0)** se tutte le raccomandazioni sono già viste o non sovrapposte alle preferenze.
+
+Questa scelta spinge il Thompson Sampling a favorire modelli che scoprono nuove raccomandazioni rilevanti, come `KBRS_Hybrid`, rispetto a semplici baseline di popolarità.
 
 ---
 
