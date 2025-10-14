@@ -11,7 +11,7 @@
 ---
 
 ## Struttura del progetto
-- **`data/`**: Contiene i dataset grezzi, processati e i risultati delle query DBpedia.
+- **`datasets/`**: Contiene i dataset grezzi, processati e i risultati delle query DBpedia.
 - **`src/`**: Include gli script principali per la gestione dei dati, le query SPARQL e l'implementazione del recommender system.
 - **`kbrs.ipynb`**: Notebook Jupyter per analisi ed esperimenti.
 
@@ -33,8 +33,8 @@
 2. **Scarica il dataset MovieLens Small**:
 - [Link al dataset](https://grouplens.org/datasets/movielens/).
 
-3. **Organizza i dati nella cartella `data/raw/`**:
-Inserisci i file CSV del dataset MovieLens in `data/raw/`.
+3. **Organizza i dati nella cartella `datasets/raw/`**:
+Inserisci i file CSV del dataset MovieLens in `datasets/raw/`.
 
 4. **Avvia il progetto**:
 - Esegui gli script nella cartella `src/`.

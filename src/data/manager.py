@@ -4,15 +4,15 @@ import time
 import pandas as pd
 from tqdm import tqdm
 
-from .sparql_manager import query_wikidata_for_imdbid, query_dbpedia_for_data
-from .mapping_manager import MappingManager
+from src.data.sparql import query_wikidata_for_imdbid, query_dbpedia_for_data
+from src.data.mapping import MappingManager
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import TruncatedSVD
 from multiprocessing import Pool, cpu_count
 from scipy.sparse import csr_matrix
 
 
-OUTPUT_FOLDER = "data/processed"
+OUTPUT_FOLDER = "datasets/processed"
 OUTPUT_FILE = os.path.join(OUTPUT_FOLDER, "dbpedia_data.csv")
 CLEANED_FILE = os.path.join(OUTPUT_FOLDER, "dbpedia_data_cleaned.csv")
 
@@ -22,11 +22,12 @@ CLEANED_FILE = os.path.join(OUTPUT_FOLDER, "dbpedia_data_cleaned.csv")
 # -----------------------------------------------------------
 def load_data():
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
+    # Go up two levels: src/data -> src -> project root
+    project_root = os.path.dirname(os.path.dirname(current_dir))
 
-    ratings_path = os.path.join(project_root, 'data', 'raw', 'ratings.csv')
-    movies_path = os.path.join(project_root, 'data', 'raw', 'movies.csv')
-    links_path = os.path.join(project_root, 'data', 'raw', 'links.csv')
+    ratings_path = os.path.join(project_root, 'datasets', 'raw', 'ratings.csv')
+    movies_path = os.path.join(project_root, 'datasets', 'raw', 'movies.csv')
+    links_path = os.path.join(project_root, 'datasets', 'raw', 'links.csv')
 
     try:
         ratings_df = pd.read_csv(ratings_path)
@@ -253,7 +254,7 @@ def _process_chunk(chunk_data, all_genres, all_directors, all_actors, runtime_sc
 
 
 def normalize_movie_data_parallel(df: pd.DataFrame,
-                                            output_path: str = 'data/processed/normalized_movies_optimized.csv',
+                                            output_path: str = 'datasets/processed/normalized_movies_optimized.csv',
                                             chunk_size: int = 200, max_features_per_category: int = 40000):
     """
     Normalizza e pre-elabora un DataFrame di film in parallelo, con selezione delle feature,
