@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from src.mab_manager import MABManager
-from src.kbrs import KBRS
+from src.bandit.mab_manager import MABManager
+from src.recommender.kbrs import KBRS
 
 class MABSimulator:
     def __init__(self, mab_manager: MABManager, ratings_df: pd.DataFrame, kbrs: KBRS, 
@@ -19,6 +19,10 @@ class MABSimulator:
         # Precompute user preferred movies (rating >= 4.0)
         self.user_preferred_movies = ratings_df[ratings_df['rating'] >= 4.0]\
             .groupby('userId')['movieId'].apply(set).to_dict()
+
+        # Precompute user seen movies (all rated items regardless of rating)
+        # This is used to avoid rewarding recommendations of already seen movies
+        self.user_seen_movies = ratings_df.groupby('userId')['movieId'].apply(set).to_dict()
 
     def _get_popularity_recommendations(self) -> list:
         """Get top-n popular movies based on rating counts"""
@@ -49,9 +53,20 @@ class MABSimulator:
             raise ValueError(f"Unknown model: {model_name}")
 
     def _simulate_reward(self, user_id: int, recommended_movie_ids: set) -> int:
-        """Simulate binary reward based on overlap with user's preferred movies (rating >= 4)."""
+        """
+        Simulate binary reward promoting exploration:
+        - Reward only if at least one recommended movie is unseen by the user AND
+          overlaps with user's preferred movies (rating >= 4.0).
+        - If all recommended items are already seen, reward is 0.
+        """
         preferred = self.user_preferred_movies.get(user_id, set())
-        return 1 if preferred & recommended_movie_ids else 0
+        seen = self.user_seen_movies.get(user_id, set())
+        new_recommendations = recommended_movie_ids - seen
+
+        if not new_recommendations:
+            return 0
+
+        return 1 if preferred & new_recommendations else 0
 
     def run_simulation(self, n_iterations: int) -> pd.DataFrame:
         """Run full simulation loop"""

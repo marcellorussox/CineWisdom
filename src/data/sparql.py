@@ -1,6 +1,6 @@
 import time
 from SPARQLWrapper import SPARQLWrapper, JSON
-from .sparql_template import DBPEDIA_MOVIE_QUERY
+from src.data.templates import DBPEDIA_MOVIE_QUERY
 
 WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql"
 DBPEDIA_ENDPOINT = "https://dbpedia.org/sparql"

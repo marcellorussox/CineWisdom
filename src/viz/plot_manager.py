@@ -58,6 +58,7 @@ def plot_mab_performance(
     plt.ylabel('Tasso di Selezione Cumulativo')
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.legend()
+    plt.savefig("plots/selection_rate.png")
     plt.show()
 
     # Plot 2: Tasso di Successo Cumulativo (Average Reward)
@@ -73,4 +74,5 @@ def plot_mab_performance(
     plt.ylabel('Tasso di Successo Medio Cumulativo')
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.legend()
+    plt.savefig("plots/cumulative_reward.png")
     plt.show()
