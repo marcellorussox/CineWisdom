@@ -14,7 +14,7 @@
 - **`datasets/`**: Contiene i dataset grezzi (`datasets/raw/`), i processati (`datasets/processed/`) e i risultati dell'arricchimento.
 - **`src/`**: Script per gestione dati, query SPARQL, KBRS, MAB e simulazione/visualizzazione.
 - **`plots/`**: Output dei grafici generati (es. `selection_rate.png`, `cumulative_reward.png`).
-- **`plots/`**: Il flusso è replicato in un notebook o in script Python che richiamano i moduli in `src/`.
+- **`kbrs.ipynb`**: Il flusso è replicato in un notebook o in script Python che richiamano i moduli in `src/`.
 
 ---
 
