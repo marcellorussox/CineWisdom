@@ -92,7 +92,14 @@ class AdvancedRewardSystem:
         model_name: str,
     ) -> RewardMetrics:
         """
-        Compute comprehensive reward for given recommendations.
+        Compute FAIR reward for given recommendations (optimized for KBRS vs Baseline comparison).
+
+        FAIR APPROACH:
+        - Only uses exploration reward (R_A) and accuracy proxy (R_G)
+        - Excludes novelty/serendipity that would bias toward baseline
+        - Both models judged on same criteria:
+          * Can find UNSEEN movies with high predicted quality (R_A)
+          * Overall accuracy of predictions (R_G)
 
         Args:
             user_id: User ID
