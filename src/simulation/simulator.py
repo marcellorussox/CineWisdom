@@ -75,12 +75,13 @@ class MABSimulator:
         self.user_seen_movies: Dict[int, Set[int]] = ratings_df.groupby('userId')['movieId'].apply(set).to_dict()
 
         # Initialize advanced reward system (after defining dependencies)
+        # FAIR REWARD: Only exploration + accuracy (no novelty/serendipity that bias baseline)
         default_reward_config = RewardConfig(
-            weight_exploration=0.4,  # 40% exploration reward
-            weight_accuracy=0.3,     # 30% accuracy proxy
-            weight_novelty=0.2,      # 20% novelty
-            weight_serendipity=0.1,  # 10% serendipity
-            use_ndcg=True,           # Use NDCG for positional rewards
+            weight_exploration=0.5,  # 50% exploration reward (R_A: binary 0/1)
+            weight_accuracy=0.5,     # 50% accuracy proxy (R_G: dynamically computed)
+            weight_novelty=0.0,      # 0% novelty - would bias baseline
+            weight_serendipity=0.0,  # 0% serendipity - would bias baseline
+            use_ndcg=False,          # Disable NDCG - use binary reward only
             update_calibration_every=50,  # Update R_G every 50 iterations
         )
         self.reward_config = reward_config or default_reward_config
