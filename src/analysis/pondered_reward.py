@@ -75,7 +75,8 @@ class PonderedRewardAnalyzer:
         })
         
         # Handle any unmapped model names (default to 0.0)
-        self.history_df['R_G_proxy'].fillna(0.0, inplace=True)
+        # Fixed: Avoid pandas FutureWarning by not using inplace on chained assignment
+        self.history_df['R_G_proxy'] = self.history_df['R_G_proxy'].fillna(0.0)
         
         # R_A is the original exploration reward
         self.history_df['R_A'] = self.history_df['reward']
