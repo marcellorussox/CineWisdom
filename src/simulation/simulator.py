@@ -107,6 +107,7 @@ class MABSimulator:
             if cached is not None:
                 return cached
             # Fallback to on-the-fly computation
+            # 🚀 OPTIMIZED: Use top_k_similar parameter for faster computation
             return self.kbrs.recommend_movies_hybrid(
                 user_id,
                 self.ratings_df,
@@ -114,6 +115,7 @@ class MABSimulator:
                 self.movie_ids_series,
                 self.cleaned_df,
                 num_recommendations=self.popularity_n,
+                top_k_similar=100,  # 🚀 OPTIMIZED: Only consider top-100 similar movies
             )
         elif model_name == 'Popularity_Baseline':
             return self._get_popularity_recommendations()
@@ -196,7 +198,7 @@ class MABSimulator:
             if use_tqdm:
                 iterable = tqdm(user_ids, desc="Precomputing KBRS")
             for uid in iterable:
-                # Compute and store top-N KBRS recommendations per user
+                # 🚀 OPTIMIZED: Compute and store top-N KBRS recommendations per user
                 recs = self.kbrs.recommend_movies_hybrid(
                     uid,
                     self.ratings_df,
@@ -204,6 +206,7 @@ class MABSimulator:
                     self.movie_ids_series,
                     self.cleaned_df,
                     num_recommendations=self.popularity_n,
+                    top_k_similar=100,  # 🚀 OPTIMIZED: Only consider top-100 similar movies
                 )
                 self._kbrs_cache[uid] = recs
 
