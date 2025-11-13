@@ -21,7 +21,7 @@ class MABSimulator:
         precompute_kbrs: bool = True,
         reward_config: Optional[RewardConfig] = None,
     ):
-        """Initialize advanced MAB simulator with reward system.
+        """Initialize MAB simulator with reward system.
 
         Parameters
         ----------
@@ -42,7 +42,7 @@ class MABSimulator:
         precompute_kbrs : bool
             Whether to precompute KBRS recommendations
         reward_config : Optional[RewardConfig]
-            Configuration for advanced reward system
+            Configuration for reward system (defaults to 50/50 exploration/accuracy)
         """
         self.mab_manager = mab_manager
         self.kbrs = kbrs
@@ -74,15 +74,15 @@ class MABSimulator:
         # This is used to avoid rewarding recommendations of already seen movies
         self.user_seen_movies: Dict[int, Set[int]] = ratings_df.groupby('userId')['movieId'].apply(set).to_dict()
 
-        # Initialize advanced reward system (after defining dependencies)
-        # FAIR REWARD: Only exploration + accuracy (no novelty/serendipity that bias baseline)
+        # Initialize reward system (✅ FIXED: Unified, correct calibration)
+        # Default: 50% exploration + 50% accuracy, update every 10 iterations
         default_reward_config = RewardConfig(
-            weight_exploration=0.5,  # 50% exploration reward (R_A: binary 0/1)
-            weight_accuracy=0.5,     # 50% accuracy proxy (R_G: dynamically computed)
-            weight_novelty=0.0,      # 0% novelty - would bias baseline
-            weight_serendipity=0.0,  # 0% serendipity - would bias baseline
-            use_ndcg=False,          # Disable NDCG - use binary reward only
-            update_calibration_every=50,  # Update R_G every 50 iterations
+            weight_exploration=0.5,
+            weight_accuracy=0.5,
+            weight_novelty=0.0,  # No bias
+            weight_serendipity=0.0,  # No bias
+            use_ndcg=False,
+            update_calibration_every=10,  # ✅ Faster calibration
         )
         self.reward_config = reward_config or default_reward_config
         self.reward_system = AdvancedRewardSystem(
@@ -238,7 +238,14 @@ class MABSimulator:
             reward = reward_metrics.composite_reward
 
             # 5. Register feedback to MAB (use round to get binary 0/1)
-            self.mab_manager.register_feedback(chosen_idx, round(reward))
+            # FIX: round(0.5) in Python va a 0 (banker's rounding), usiamo int() per >=0.5
+            binary_reward = 1 if reward >= 0.5 else 0
+
+            # DEBUG: Stampa reward per debug
+            if i < 10:  # Solo primi 10 per non spam
+                print(f"  [MAB FEEDBACK] {model_name}: reward={reward:.3f} -> binary={binary_reward}")
+
+            self.mab_manager.register_feedback(chosen_idx, binary_reward)
             
             # 6. Record history with advanced metrics
             mab_stats = self.mab_manager.get_statistics()
