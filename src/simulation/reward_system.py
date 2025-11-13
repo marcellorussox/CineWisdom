@@ -28,18 +28,18 @@ class RewardConfig:
     exploration_threshold: float = 4.0  # Rating threshold for positive rewards
 
     # Reward weights for composite scoring
-    weight_exploration: float = 0.4  # R_A weight
-    weight_accuracy: float = 0.3  # R_G weight
-    weight_novelty: float = 0.2  # Novelty score
-    weight_serendipity: float = 0.1  # Serendipity score
+    weight_exploration: float = 0.5  # R_A weight (default 50%)
+    weight_accuracy: float = 0.5  # R_G weight (default 50%)
+    weight_novelty: float = 0.0  # Novelty score (default 0% - no bias)
+    weight_serendipity: float = 0.0  # Serendipity score (default 0% - no bias)
 
     # Position-based rewards
-    use_ndcg: bool = True  # Use NDCG for positional rewards
+    use_ndcg: bool = False  # Use NDCG for positional rewards (default False)
     use_mrr: bool = False  # Use MRR
     use_map: bool = False  # Use MAP
 
     # Calibration
-    update_calibration_every: int = 50  # Recompute R_G every N iterations
+    update_calibration_every: int = 10  # ✅ FIX: Recompute R_G every 10 iterations (faster)
 
     # Novelty settings
     novelty_penalty: float = 0.1  # Penalize already-seen items
@@ -113,15 +113,19 @@ class AdvancedRewardSystem:
 
         # Compute exploration reward (R_A)
         exploration_reward = self._compute_exploration_reward(
-            recommendations, seen, model_name
+            recommendations, seen, model_name, user_id
         )
 
         # Compute accuracy proxy (R_G)
         accuracy_proxy = self._compute_accuracy_proxy(recommendations, model_name)
 
-        # Update R_G calibration
+        # DEBUG: Log reward composition per capire perché baseline vince sempre
+        if self.kbrs_calls <= 3:  # Solo primi 3 per non spam
+            print(f"\n  [DEBUG {model_name}] R_A={exploration_reward:.3f}, R_G={accuracy_proxy:.3f}")
+
+        # Update R_G calibration (✅ FIX: Pass user_id and seen for UNSEEN-only calibration)
         if model_name == 'KBRS_Hybrid':
-            self._update_calibration(recommendations)
+            self._update_calibration(recommendations, seen)
             accuracy_proxy = self.general_accuracy
 
         # Compute novelty score
@@ -153,27 +157,53 @@ class AdvancedRewardSystem:
         recommendations: List[Tuple[int, Optional[float]]],
         seen: set,
         model_name: str,
+        user_id: int,
     ) -> float:
         """
-        Compute exploration reward (R_A).
+        Compute exploration reward (R_A) - IMPROVED: Reward diversity & personalization!
 
-        Returns 1 if:
-        - KBRS: Unseen movie with predicted_rating >= threshold
-        - Baseline: At least one popular unseen movie
+        Returns score (0-1) based on exploration potential.
+
+        New approach:
+        1. Check how many recommendations are UNSEEN (exploration bonus)
+        2. For KBRS: Reward if predictions are diverse (not all the same)
+        3. For Baseline: Standard exploration score
         """
-        has_predictions = any(pred is not None for _, pred in recommendations)
+        unseen_count = 0
+        diverse_predictions = 0
+        predictions = []
 
-        if has_predictions:
-            # KBRS model: check for high-quality unseen items
-            for movie_id, pred in recommendations:
-                if movie_id not in seen and pred is not None and pred >= self.config.exploration_threshold:
-                    return 1.0
-            return 0.0
+        for movie_id, pred in recommendations:
+            # Exploration: UNSEEN items bonus
+            if movie_id not in seen:
+                unseen_count += 1
+
+            # Collect predictions for diversity check
+            if pred is not None:
+                predictions.append(pred)
+
+        # Normalize: 0-1 based on number of recommendations
+        if len(recommendations) > 0:
+            exploration_score = unseen_count / len(recommendations)
+
+            # Diversity check: reward varied predictions
+            if len(predictions) > 1:
+                pred_std = np.std(predictions)
+                # Higher std = more diverse predictions = better personalization
+                if pred_std > 0.5:  # Threshold for "diverse"
+                    diverse_predictions = 1.0
+                else:
+                    diverse_predictions = pred_std  # Partial credit
+
+            # Combine: 80% exploration + 20% diversity
+            # KBRS should excel at both (personalized + diverse)
+            # Baseline only at exploration (popular UNSEEN movies)
+            if model_name == 'KBRS_Hybrid':
+                return 0.8 * exploration_score + 0.2 * diverse_predictions
+            else:
+                # Baseline: only exploration score (not personalized)
+                return exploration_score
         else:
-            # Baseline model: check for popular unseen items
-            for movie_id, _ in recommendations:
-                if movie_id not in seen and movie_id in self.popularity_top_ids:
-                    return 1.0
             return 0.0
 
     def _compute_accuracy_proxy(
@@ -254,19 +284,35 @@ class AdvancedRewardSystem:
     def _update_calibration(
         self,
         recommendations: List[Tuple[int, Optional[float]]],
+        seen: set,
     ) -> None:
-        """Update general accuracy proxy (R_G) dynamically."""
+        """Update general accuracy proxy (R_G) dynamically - FIXED: Only UNSEEN items."""
         self.kbrs_calls += 1
         self._iterations_since_calibration += 1
 
-        # Check if any prediction >= threshold (ignoring seen/unseen)
-        if any(pred is not None and pred >= self.config.exploration_threshold for _, pred in recommendations):
-            self.kbrs_hits += 1
+        # ✅ FIX: Check if any UNSEEN prediction >= threshold
+        hit_found = False
+        for movie_id, pred in recommendations:
+            if movie_id not in seen and pred is not None and pred >= self.config.exploration_threshold:
+                self.kbrs_hits += 1
+                hit_found = True
+                break  # One call per iteration
+
+        # DEBUG: Log first few calls to understand R_G behavior
+        if self.kbrs_calls <= 5:
+            print(f"  [DEBUG] KBRS call #{self.kbrs_calls}: hit={hit_found}, threshold={self.config.exploration_threshold}")
+            print(f"    Recommendations: {len(recommendations)} items")
+            unseen_count = sum(1 for mid, _ in recommendations if mid not in seen)
+            high_pred_count = sum(1 for _, pred in recommendations if pred is not None and pred >= self.config.exploration_threshold)
+            print(f"    Unseen items: {unseen_count}, High pred items: {high_pred_count}")
 
         # Update R_G if enough iterations have passed
         if self._iterations_since_calibration >= self.config.update_calibration_every:
             if self.kbrs_calls > 0:
+                old_accuracy = self.general_accuracy
                 self.general_accuracy = self.kbrs_hits / self.kbrs_calls
+                print(f"  [CALIBRATION] R_G updated: {old_accuracy:.4f} -> {self.general_accuracy:.4f} "
+                      f"(hits={self.kbrs_hits}/{self.kbrs_calls})")
             self._iterations_since_calibration = 0
 
     def compute_position_based_reward(

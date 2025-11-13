@@ -45,18 +45,26 @@ class PonderedRewardAnalyzer:
         history_df: pd.DataFrame,
         kbrs_general_accuracy: float,
         baseline_general_accuracy: float = 0.0,
+        plot: bool = False,
+        save_plot_path: Optional[str] = None,
     ):
         required_cols = {"iteration", "model_name", "reward"}
         missing = required_cols - set(history_df.columns)
         if missing:
             raise ValueError(f"history_df missing required columns: {sorted(missing)}")
-        
+
         self.history_df = history_df.copy()
         self.kbrs_accuracy = kbrs_general_accuracy
         self.baseline_accuracy = baseline_general_accuracy
-        
+        self.plot = plot
+        self.save_plot_path = save_plot_path
+
         # Compute pondered rewards
         self._compute_pondered_rewards()
+
+        # Generate plot if requested
+        if self.plot:
+            self._generate_plot()
     
     def _compute_pondered_rewards(self) -> None:
         """
@@ -205,7 +213,17 @@ class PonderedRewardAnalyzer:
             plt.show()
         else:
             plt.close()
-    
+
+    def _generate_plot(self) -> None:
+        """
+        Internal method to generate plot when plot=True is passed to __init__.
+        Uses self.save_plot_path if provided.
+        """
+        self.plot_comparative_rewards(
+            save_path=self.save_plot_path,
+            show=True
+        )
+
     def generate_summary_report(self) -> str:
         """
         Generate a text summary report of the pondered reward analysis.
