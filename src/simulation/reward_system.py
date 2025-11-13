@@ -123,6 +123,10 @@ class AdvancedRewardSystem:
         if self.kbrs_calls <= 3:  # Solo primi 3 per non spam
             print(f"\n  [DEBUG {model_name}] R_A={exploration_reward:.3f}, R_G={accuracy_proxy:.3f}")
 
+        # DEBUG: Mostra componenti reward
+        if self.kbrs_calls <= 3:
+            print(f"    Composite reward = {self.config.weight_exploration}*{exploration_reward:.3f} + {self.config.weight_accuracy}*{accuracy_proxy:.3f} = {self.config.weight_exploration * exploration_reward + self.config.weight_accuracy * accuracy_proxy:.3f}")
+
         # Update R_G calibration (✅ FIX: Pass user_id and seen for UNSEEN-only calibration)
         if model_name == 'KBRS_Hybrid':
             self._update_calibration(recommendations, seen)
@@ -199,9 +203,22 @@ class AdvancedRewardSystem:
             # KBRS should excel at both (personalized + diverse)
             # Baseline only at exploration (popular UNSEEN movies)
             if model_name == 'KBRS_Hybrid':
-                return 0.8 * exploration_score + 0.2 * diverse_predictions
+                final_reward = 0.8 * exploration_score + 0.2 * diverse_predictions
+
+                # DEBUG: Mostra calcolo
+                if self.kbrs_calls <= 3:
+                    print(f"      KBRS: exploration={exploration_score:.3f}, diversity={diverse_predictions:.3f}")
+                    print(f"      Final R_A = 0.8*{exploration_score:.3f} + 0.2*{diverse_predictions:.3f} = {final_reward:.3f}")
+
+                return final_reward
             else:
                 # Baseline: only exploration score (not personalized)
+
+                # DEBUG: Mostra calcolo
+                if self.kbrs_calls <= 3:
+                    print(f"      Baseline: exploration={exploration_score:.3f}, diversity=0.0")
+                    print(f"      Final R_A = {exploration_score:.3f}")
+
                 return exploration_score
         else:
             return 0.0
@@ -305,6 +322,7 @@ class AdvancedRewardSystem:
             unseen_count = sum(1 for mid, _ in recommendations if mid not in seen)
             high_pred_count = sum(1 for _, pred in recommendations if pred is not None and pred >= self.config.exploration_threshold)
             print(f"    Unseen items: {unseen_count}, High pred items: {high_pred_count}")
+            print(f"    WHY hit={hit_found}: movie_id={recommendations[0][0] if recommendations else 'N/A'} not in seen={recommendations[0][0] not in seen if recommendations else False}, pred={recommendations[0][1] if recommendations else 'N/A'} >= {self.config.exploration_threshold}={recommendations[0][1] >= self.config.exploration_threshold if recommendations and recommendations[0][1] is not None else False}")
 
         # Update R_G if enough iterations have passed
         if self._iterations_since_calibration >= self.config.update_calibration_every:
