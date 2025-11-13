@@ -226,6 +226,11 @@ class MABSimulator:
             # 2. Get MAB recommendation (arm selection)
             chosen_idx, model_name = self.mab_manager.get_recommendations()
 
+            # DEBUG: Mostra scelta MAB per primi 10
+            if i < 10:
+                mab_stats = self.mab_manager.get_statistics()
+                print(f"  [MAB CHOICE #{i}] {model_name} (arm={chosen_idx}) - selections so far: KBRS={mab_stats['selections'][0]}, Baseline={mab_stats['selections'][1]}")
+
             # 3. Generate recommendations
             recommendations = self._get_recommendations_for_model(model_name, user_id)
 
