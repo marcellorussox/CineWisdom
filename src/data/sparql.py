@@ -1,15 +1,61 @@
 import time
+import functools
 from SPARQLWrapper import SPARQLWrapper, JSON
 from src.data.templates import DBPEDIA_MOVIE_QUERY
 
 WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql"
 DBPEDIA_ENDPOINT = "https://dbpedia.org/sparql"
 
+# 🚀 PERFORMANCE: Cache per SPARQL queries (evita chiamate duplicate)
+# Evita di fare la stessa query SPARQL più volte (le API sono lente!)
+_sparql_cache = {}
+
+
+def _get_cache_key(query: str, params: tuple) -> str:
+    """Generate cache key for SPARQL query."""
+    return f"{hash(query)}_{hash(params)}"
+
+
+def cached_sparql_query(query_func):
+    """
+    🚀 OPTIMIZED: Decorator per caching SPARQL queries.
+
+    Usage:
+        @cached_sparql_query
+        def query_function(...):
+            ...
+    """
+    @functools.wraps(query_func)
+    def wrapper(*args, **kwargs):
+        # Create cache key from function name and arguments
+        cache_key = _get_cache_key(query_func.__name__, (args, tuple(sorted(kwargs.items()))))
+
+        # Check cache first
+        if cache_key in _sparql_cache:
+            return _sparql_cache[cache_key]
+
+        # Cache miss: execute query and store result
+        result = query_func(*args, **kwargs)
+        _sparql_cache[cache_key] = result
+        return result
+
+    return wrapper
+
+
+def clear_sparql_cache():
+    """Clear SPARQL cache if needed."""
+    global _sparql_cache
+    _sparql_cache.clear()
+    print("SPARQL cache cleared.")
+
 
 # Function to query Wikidata in batches and map IMDb IDs to Wikidata IDs
+@cached_sparql_query
 def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1, max_retries=3):
     """
-    Map a list of IMDb IDs to Wikidata QIDs using batched SPARQL queries with retries.
+    🚀 OPTIMIZED: Map a list of IMDb IDs to Wikidata QIDs using batched SPARQL queries with retries.
+
+    Uses caching to avoid duplicate queries to slow SPARQL endpoints.
     """
     mappings = {}
 
@@ -53,6 +99,7 @@ def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1, max_retries=3):
 
 
 # Function to query DBpedia in batches and get additional information
+@cached_sparql_query
 def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1, max_retries=3):
     data = {}
 
