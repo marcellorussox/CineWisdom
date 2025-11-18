@@ -84,6 +84,11 @@ class MABManager:
         """
         idx = self.mab_instance.select_arm()
         model_name = self.recommender_models[idx]
+
+        # DEBUG: Log arm selection
+        arm_name = 'KBRS' if idx == 0 else 'Baseline'
+        print(f"  [MAB] Selected {arm_name} (arm {idx})")
+
         return idx, model_name
 
     def register_feedback(self, chosen_arm_index: int, reward: int) -> None:
@@ -96,6 +101,10 @@ class MABManager:
         reward : int
             Binary reward in {0, 1} indicating user interaction outcome.
         """
+        # DEBUG: Log reward to track MAB learning
+        arm_name = 'KBRS' if chosen_arm_index == 0 else 'Baseline'
+        print(f"  [MAB] Received reward={reward} for {arm_name} (arm {chosen_arm_index})")
+
         self.mab_instance.update(chosen_arm_index, reward)
 
     def get_statistics(self) -> dict:

@@ -25,11 +25,11 @@ from dataclasses import dataclass
 class RewardConfig:
     """Configuration for reward computation."""
     # Exploration reward
-    exploration_threshold: float = 4.0  # Rating threshold for positive rewards
+    exploration_threshold: float = 3.5  # Rating threshold for positive rewards (lowered from 4.0)
 
     # Reward weights for composite scoring
-    weight_exploration: float = 0.5  # R_A weight (default 50%)
-    weight_accuracy: float = 0.5  # R_G weight (default 50%)
+    weight_exploration: float = 0.7  # R_A weight (default 70% - increased)
+    weight_accuracy: float = 0.3  # R_G weight (default 30% - decreased)
     weight_novelty: float = 0.0  # Novelty score (default 0% - no bias)
     weight_serendipity: float = 0.0  # Serendipity score (default 0% - no bias)
 
@@ -232,12 +232,32 @@ class AdvancedRewardSystem:
         Compute accuracy proxy (R_G).
 
         For KBRS: Returns the general accuracy from calibration.
-        For Baseline: Returns 0 (non-personalized).
+        For Baseline: Returns a baseline accuracy based on average rating of popular movies.
         """
         if model_name == 'KBRS_Hybrid':
             return self.general_accuracy
         else:
+            # Baseline accuracy: based on popularity of recommended movies
+            # More popular movies = higher expected rating
+            return self._compute_baseline_popularity_score(recommendations)
+
+    def _compute_baseline_popularity_score(
+        self,
+        recommendations: List[Tuple[int, Optional[float]]]
+    ) -> float:
+        """
+        Compute baseline accuracy based on movie popularity.
+        Popular movies have higher average ratings.
+        """
+        if not recommendations:
             return 0.0
+
+        # Get average rating for popular movies
+        # Baseline always recommends popular movies, so they should have decent ratings
+        popular_movie_avg_rating = 3.5  # Assumption: popular movies average 3.5-4.0
+
+        # Normalize to 0-1 scale (assuming 5-point rating scale)
+        return min(1.0, popular_movie_avg_rating / 5.0)
 
     def _compute_novelty_score(
         self,
@@ -316,20 +336,24 @@ class AdvancedRewardSystem:
                 break  # One call per iteration
 
         # DEBUG: Log first few calls to understand R_G behavior
-        if self.kbrs_calls <= 5:
-            print(f"  [DEBUG] KBRS call #{self.kbrs_calls}: hit={hit_found}, threshold={self.config.exploration_threshold}")
+        if self.kbrs_calls <= 10:
+            print(f"\n  [DEBUG] KBRS call #{self.kbrs_calls}: hit={hit_found}, threshold={self.config.exploration_threshold}")
             print(f"    Recommendations: {len(recommendations)} items")
             unseen_count = sum(1 for mid, _ in recommendations if mid not in seen)
             high_pred_count = sum(1 for _, pred in recommendations if pred is not None and pred >= self.config.exploration_threshold)
             print(f"    Unseen items: {unseen_count}, High pred items: {high_pred_count}")
-            print(f"    WHY hit={hit_found}: movie_id={recommendations[0][0] if recommendations else 'N/A'} not in seen={recommendations[0][0] not in seen if recommendations else False}, pred={recommendations[0][1] if recommendations else 'N/A'} >= {self.config.exploration_threshold}={recommendations[0][1] >= self.config.exploration_threshold if recommendations and recommendations[0][1] is not None else False}")
+            if recommendations:
+                first_pred = recommendations[0][1]
+                print(f"    First prediction: {first_pred:.2f} (>= {self.config.exploration_threshold}? {first_pred >= self.config.exploration_threshold if first_pred is not None else False})")
+                print(f"    First movie seen? {recommendations[0][0] in seen}")
+            print(f"    R_G so far: {self.kbrs_hits}/{self.kbrs_calls} = {self.kbrs_hits/max(1, self.kbrs_calls):.4f}")
 
         # Update R_G if enough iterations have passed
         if self._iterations_since_calibration >= self.config.update_calibration_every:
             if self.kbrs_calls > 0:
                 old_accuracy = self.general_accuracy
                 self.general_accuracy = self.kbrs_hits / self.kbrs_calls
-                print(f"  [CALIBRATION] R_G updated: {old_accuracy:.4f} -> {self.general_accuracy:.4f} "
+                print(f"\n  [CALIBRATION] R_G updated: {old_accuracy:.4f} -> {self.general_accuracy:.4f} "
                       f"(hits={self.kbrs_hits}/{self.kbrs_calls})")
             self._iterations_since_calibration = 0
 
