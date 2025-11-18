@@ -1,3 +1,5 @@
 /.venv/
 .idea
 .claude
+plots/
+plots_buoni/
