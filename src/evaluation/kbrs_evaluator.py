@@ -177,7 +177,7 @@ class KBRSEvaluator:
         
         results = {
             'final_metrics': simulation_results['summary'],
-            'strategy_performance': strategy_performance.to_dict(),
+            'strategy_performance': strategy_performance,
             'mab_statistics': {
                 'exploration_pulls': int(mab_stats['pulls'][0]),
                 'exploitation_pulls': int(mab_stats['pulls'][1]),
