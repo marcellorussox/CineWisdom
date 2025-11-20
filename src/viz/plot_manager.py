@@ -244,3 +244,108 @@ def create_summary_table(comparison_df: pd.DataFrame) -> None:
     print("=" * 80)
     print(comparison_df.round(4).to_string(index=False))
     print("=" * 80)
+
+
+def plot_online_learning_curve(
+    history_df: pd.DataFrame,
+    output_path: str = 'plots/online_learning_curve.png',
+    window_size: int = 100
+) -> None:
+    """
+    📈 Plot della curva di apprendimento online del MAB.
+    
+    Mostra tre grafici:
+    1. Cumulative Average Reward nel tempo
+    2. Arm Selection Rate (quale braccio viene scelto)
+    3. Smoothed Reward per Arm (reward media mobile per ciascun arm)
+    
+    Args:
+        history_df: DataFrame con colonne 'iteration', 'arm_name', 'reward'
+        output_path: Percorso dove salvare il grafico
+        window_size: Dimensione finestra per smoothing (moving average)
+    """
+    import os
+    os.makedirs('plots', exist_ok=True)
+    
+    # Calcola cumulative average reward
+    history_df = history_df.copy()
+    history_df['cumulative_reward'] = history_df['reward'].cumsum()
+    history_df['avg_reward'] = history_df['cumulative_reward'] / (history_df.index + 1)
+    
+    # Calcola arm selection rate cumulativa
+    arms = history_df['arm_name'].unique()
+    for arm in arms:
+        history_df[f'is_{arm}'] = (history_df['arm_name'] == arm).astype(int)
+        history_df[f'cumsum_{arm}'] = history_df[f'is_{arm}'].cumsum()
+        history_df[f'rate_{arm}'] = history_df[f'cumsum_{arm}'] / (history_df.index + 1)
+    
+    # Calcola smoothed reward per arm (moving average)
+    for arm in arms:
+        arm_mask = history_df['arm_name'] == arm
+        history_df.loc[arm_mask, f'smooth_reward_{arm}'] = (
+            history_df.loc[arm_mask, 'reward']
+            .rolling(window=window_size, min_periods=1)
+            .mean()
+        )
+    
+    # Create figure with 3 subplots
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12))
+    
+    # Plot 1: Cumulative Average Reward
+    ax1.plot(history_df.index, history_df['avg_reward'], 
+             label='Cumulative Avg Reward', color='green', linewidth=2)
+    ax1.axhline(y=0.65, color='red', linestyle='--', 
+                label='Baseline Oracle (0.65)', alpha=0.7)
+    ax1.set_xlabel('Interaction')
+    ax1.set_ylabel('Cumulative Average Reward')
+    ax1.set_title('📈 Online Learning: Cumulative Average Reward', fontsize=14, fontweight='bold')
+    ax1.grid(True, linestyle='--', alpha=0.3)
+    ax1.legend(loc='best')
+    
+    # Annotazione valore finale
+    final_reward = history_df['avg_reward'].iloc[-1]
+    ax1.text(0.02, 0.98, f'Final Avg Reward: {final_reward:.4f}',
+             transform=ax1.transAxes, fontsize=10, verticalalignment='top',
+             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    
+    # Plot 2: Arm Selection Rate
+    colors = ['blue', 'orange', 'purple', 'brown']
+    for i, arm in enumerate(arms):
+        ax2.plot(history_df.index, history_df[f'rate_{arm}'], 
+                label=f'{arm} Selection Rate', 
+                color=colors[i % len(colors)], linewidth=2)
+    ax2.set_xlabel('Interaction')
+    ax2.set_ylabel('Selection Rate (Cumulative %)')
+    ax2.set_title('🎯 Arm Selection Rate Over Time', fontsize=14, fontweight='bold')
+    ax2.grid(True, linestyle='--', alpha=0.3)
+    ax2.legend(loc='best')
+    ax2.set_ylim(0, 1)
+    
+    # Plot 3: Smoothed Reward per Arm
+    for i, arm in enumerate(arms):
+        arm_data = history_df[history_df['arm_name'] == arm]
+        if not arm_data.empty:
+            ax3.plot(arm_data.index, arm_data[f'smooth_reward_{arm}'], 
+                    label=f'{arm} (smoothed)', 
+                    color=colors[i % len(colors)], linewidth=2, alpha=0.7)
+    ax3.set_xlabel('Interaction')
+    ax3.set_ylabel(f'Reward (Moving Avg, window={window_size})')
+    ax3.set_title('🔄 Per-Arm Reward Performance (Smoothed)', fontsize=14, fontweight='bold')
+    ax3.grid(True, linestyle='--', alpha=0.3)
+    ax3.legend(loc='best')
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"✅ Learning curve saved to {output_path}")
+    
+    # Stampa summary
+    print("\n" + "=" * 60)
+    print("📊 ONLINE LEARNING SUMMARY")
+    print("=" * 60)
+    for arm in arms:
+        final_rate = history_df[f'rate_{arm}'].iloc[-1]
+        arm_rewards = history_df[history_df['arm_name'] == arm]['reward']
+        avg_arm_reward = arm_rewards.mean() if len(arm_rewards) > 0 else 0.0
+        print(f"{arm:15} | Selection: {final_rate:6.2%} | Avg Reward: {avg_arm_reward:.4f}")
+    print(f"{'Overall':15} | Final Avg Reward: {final_reward:.4f}")
+    print("=" * 60)

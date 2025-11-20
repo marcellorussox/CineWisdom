@@ -88,49 +88,42 @@ class AdvancedRewardSystem:
     def compute_reward(
         self,
         user_id: int,
+        strategy: str,  # 'exploration' or 'exploitation'
         recommendations: List[Tuple[int, Optional[float]]],
-        model_name: str,
+        actual_rating: Optional[float] = None,  # Actual rating if known (for simulation)
+        model_name: Optional[str] = None,  # Keep for backward compatibility
     ) -> RewardMetrics:
         """
-        Compute FAIR reward for given recommendations (optimized for KBRS vs Baseline comparison).
+        Compute strategy-based reward for given recommendations.
 
-        FAIR APPROACH:
-        - Only uses exploration reward (R_A) and accuracy proxy (R_G)
-        - Excludes novelty/serendipity that would bias toward baseline
-        - Both models judged on same criteria:
-          * Can find UNSEEN movies with high predicted quality (R_A)
-          * Overall accuracy of predictions (R_G)
+        This version is optimized for Opzione 3: Exploration vs Exploitation.
+
+        The reward is computed based on:
+        1. Whether the user appreciated the STRATEGY chosen by the MAB
+        2. Quality of recommendations for that strategy
+        3. User satisfaction measured by actual ratings (if available)
 
         Args:
             user_id: User ID
+            strategy: 'exploration' or 'exploitation' - the strategy used
             recommendations: List of (movie_id, predicted_rating) pairs
-            model_name: Name of the model (KBRS_Hybrid or Popularity_Baseline)
+            actual_rating: Actual rating if known (for simulation)
+            model_name: Deprecated, kept for backward compatibility
 
         Returns:
             RewardMetrics container with all computed metrics
         """
         seen = self.user_seen_movies.get(user_id, set())
 
-        # Compute exploration reward (R_A)
-        exploration_reward = self._compute_exploration_reward(
-            recommendations, seen, model_name, user_id
+        # Compute strategy reward based on user satisfaction
+        strategy_reward = self._compute_strategy_reward(
+            strategy, recommendations, seen, actual_rating, user_id
         )
 
         # Compute accuracy proxy (R_G)
-        accuracy_proxy = self._compute_accuracy_proxy(recommendations, model_name)
-
-        # DEBUG: Log reward composition per capire perché baseline vince sempre
-        if self.kbrs_calls <= 3:  # Solo primi 3 per non spam
-            print(f"\n  [DEBUG {model_name}] R_A={exploration_reward:.3f}, R_G={accuracy_proxy:.3f}")
-
-        # DEBUG: Mostra componenti reward
-        if self.kbrs_calls <= 3:
-            print(f"    Composite reward = {self.config.weight_exploration}*{exploration_reward:.3f} + {self.config.weight_accuracy}*{accuracy_proxy:.3f} = {self.config.weight_exploration * exploration_reward + self.config.weight_accuracy * accuracy_proxy:.3f}")
-
-        # Update R_G calibration (✅ FIX: Pass user_id and seen for UNSEEN-only calibration)
-        if model_name == 'KBRS_Hybrid':
-            self._update_calibration(recommendations, seen)
-            accuracy_proxy = self.general_accuracy
+        accuracy_proxy = self._compute_strategy_accuracy(
+            strategy, recommendations, actual_rating
+        )
 
         # Compute novelty score
         novelty_score = self._compute_novelty_score(user_id, recommendations, seen)
@@ -142,19 +135,123 @@ class AdvancedRewardSystem:
 
         # Compute composite reward
         composite_reward = (
-            self.config.weight_exploration * exploration_reward +
+            self.config.weight_exploration * strategy_reward +
             self.config.weight_accuracy * accuracy_proxy +
             self.config.weight_novelty * novelty_score +
             self.config.weight_serendipity * serendipity_score
         )
 
         return RewardMetrics(
-            exploration_reward=exploration_reward,
+            exploration_reward=strategy_reward,
             accuracy_proxy=accuracy_proxy,
             novelty_score=novelty_score,
             serendipity_score=serendipity_score,
             composite_reward=composite_reward,
         )
+
+    def _compute_strategy_reward(
+        self,
+        strategy: str,
+        recommendations: List[Tuple[int, Optional[float]]],
+        seen: set,
+        actual_rating: Optional[float],
+        user_id: int
+    ) -> float:
+        """
+        Compute reward based on whether the user appreciated the strategy.
+
+        Args:
+            strategy: 'exploration' or 'exploitation'
+            recommendations: List of (movie_id, predicted_rating) pairs
+            seen: Set of movies already seen by the user
+            actual_rating: Actual rating if known (for simulation)
+            user_id: User ID
+
+        Returns:
+            Reward score (0.0 to 1.0)
+        """
+        if not recommendations:
+            return 0.0
+
+        # If we have actual rating, use it directly
+        if actual_rating is not None:
+            # Normalize rating to 0-1 scale
+            normalized_rating = min(1.0, max(0.0, actual_rating / 5.0))
+            return normalized_rating
+
+        # No actual rating: infer satisfaction from recommendation quality
+        if strategy == 'exploitation':
+            # Exploitation should provide high-quality, similar recommendations
+            # Reward if predictions are consistently high (user likely to like them)
+            high_quality_count = sum(
+                1 for _, pred in recommendations
+                if pred is not None and pred >= 4.0
+            )
+            return high_quality_count / len(recommendations)
+
+        else:  # strategy == 'exploration'
+            # Exploration should provide diverse, unseen recommendations
+            # Reward for novelty (unseen movies) with decent quality
+            unseen_count = sum(
+                1 for movie_id, _ in recommendations
+                if movie_id not in seen
+            )
+            novelty_score = unseen_count / len(recommendations)
+
+            # Also check if predictions are reasonable (not too low)
+            reasonable_predictions = sum(
+                1 for _, pred in recommendations
+                if pred is not None and pred >= 3.0
+            )
+            quality_score = reasonable_predictions / len(recommendations)
+
+            # Combine novelty (70%) and quality (30%)
+            return 0.7 * novelty_score + 0.3 * quality_score
+
+    def _compute_strategy_accuracy(
+        self,
+        strategy: str,
+        recommendations: List[Tuple[int, Optional[float]]],
+        actual_rating: Optional[float]
+    ) -> float:
+        """
+        Compute accuracy proxy for the strategy.
+
+        Args:
+            strategy: 'exploration' or 'exploitation'
+            recommendations: List of (movie_id, predicted_rating) pairs
+            actual_rating: Actual rating if known
+
+        Returns:
+            Accuracy score (0.0 to 1.0)
+        """
+        if actual_rating is not None:
+            # If we have actual rating, compute error
+            if recommendations:
+                predicted = recommendations[0][1]  # Use first prediction
+                if predicted is not None:
+                    error = abs(predicted - actual_rating) / 5.0  # Normalize error
+                    return max(0.0, 1.0 - error)  # Convert to accuracy
+            return 0.5  # Default if no prediction
+
+        # No actual rating: use prediction consistency
+        if not recommendations:
+            return 0.0
+
+        predictions = [pred for _, pred in recommendations if pred is not None]
+        if len(predictions) < 2:
+            return 0.5
+
+        # Higher variance in exploration is good (diverse recommendations)
+        # Lower variance in exploitation is good (consistent quality)
+        pred_std = np.std(predictions)
+
+        if strategy == 'exploration':
+            # Reward moderate to high variance (diversity)
+            return min(1.0, pred_std / 1.0)  # Normalize std dev
+        else:  # exploitation
+            # Reward low variance (consistency) but not zero
+            return max(0.0, 1.0 - min(1.0, pred_std / 0.5))
 
     def _compute_exploration_reward(
         self,

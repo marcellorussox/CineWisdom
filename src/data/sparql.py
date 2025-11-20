@@ -11,9 +11,18 @@ DBPEDIA_ENDPOINT = "https://dbpedia.org/sparql"
 _sparql_cache = {}
 
 
+def _make_hashable(value):
+    """Recursively convert lists/dicts to hashable types (tuples)."""
+    if isinstance(value, (tuple, list)):
+        return tuple(_make_hashable(v) for v in value)
+    if isinstance(value, dict):
+        return tuple(sorted((k, _make_hashable(v)) for k, v in value.items()))
+    return value
+
+
 def _get_cache_key(query: str, params: tuple) -> str:
     """Generate cache key for SPARQL query."""
-    return f"{hash(query)}_{hash(params)}"
+    return f"{hash(query)}_{hash(_make_hashable(params))}"
 
 
 def cached_sparql_query(query_func):

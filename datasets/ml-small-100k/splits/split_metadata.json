@@ -1,0 +1,11 @@
+{
+  "train_size": 79532,
+  "val_size": 11102,
+  "test_size": 10202,
+  "total_size": 100836,
+  "unique_users": 610,
+  "unique_movies": 9724,
+  "train_pct": 78.87262485620215,
+  "val_pct": 11.009956761474077,
+  "test_pct": 10.117418382323773
+}

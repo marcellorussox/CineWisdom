@@ -47,6 +47,7 @@ from src.data.manager import (
     join_dataframes,
     enrich_movies,
     clean_partial_rows,
+    drop_columns,
     normalize_movie_data_parallel,
     compress_kbrs_dataset,
 )
@@ -175,6 +176,27 @@ class PreprocessingPipeline:
 
         return enriched_movie_catalog
 
+    def drop_columns_before_cleaning(self, enriched_catalog: pd.DataFrame) -> pd.DataFrame:
+        """
+        Drop columns that cause excessive cleaning (as per notebook original).
+
+        Args:
+            enriched_catalog: DataFrame with enriched catalog
+
+        Returns:
+            DataFrame with specific columns dropped
+        """
+        print("\n🗑️ Dropping columns before cleaning (notebook-compatible)...")
+
+        # Drop columns that cause excessive data loss
+        columns_to_drop = ['title', 'imdbId', 'dbpediaAbstract', 'wikidataId']
+        cleaned_catalog = drop_columns(enriched_catalog, columns_to_drop)
+
+        print(f"✅ Dropped columns: {columns_to_drop}")
+        print(f"   Shape after drop: {cleaned_catalog.shape}")
+
+        return cleaned_catalog
+
     def clean_data(self, enriched_catalog: pd.DataFrame) -> pd.DataFrame:
         """
         Clean data by removing rows with missing values.
@@ -294,6 +316,9 @@ class PreprocessingPipeline:
 
         # Step 3: Enrich catalog
         enriched_catalog = self.enrich_catalog(unique_movie_catalog)
+
+        # Step 3.5: Drop columns (CRITICAL FIX - replicate notebook exact logic)
+        enriched_catalog = self.drop_columns_before_cleaning(enriched_catalog)
 
         # Step 4: Clean data
         cleaned_df = self.clean_data(enriched_catalog)

@@ -1,5 +1,38 @@
+# Python
 /.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
 .idea
 .claude
+.vscode
+
+# Outputs
 plots/
 plots_buoni/
+*.png
+*.jpg
+
+# Logs
+logs/**/*.log
+logs/**/*.txt
+!logs/README.md
+
+# Datasets (keep structure, ignore data)
+datasets/*/raw/*.csv
+datasets/*/raw/*.dat
+datasets/*/processed/*.csv
+datasets/*/splits/*.csv
+datasets/*.zip
+datasets/ml-*-raw/
+
+# Models
+models/**/*.pt
+models/**/*.pth
+!models/README.md
+
+# Results
+results/**/*.csv
+!results/README.md

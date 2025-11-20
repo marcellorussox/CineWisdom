@@ -1,8 +1,10 @@
-pandas==2.3.1
+pandas==2.2.0
 SPARQLWrapper==2.0.0
-tqdm==4.67.1
-ipython==9.4.0
-jupyter==1.1.1
-scikit-learn~=1.7.1
+tqdm==4.66.1
+ipython
+jupyter
+scikit-learn
 numpy
 matplotlib
+torch
+scipy
