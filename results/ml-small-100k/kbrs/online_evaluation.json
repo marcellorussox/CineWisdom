@@ -1,0 +1,11 @@
+{
+  "final_metrics": {
+    "total_interactions": 20168,
+    "mean_reward": 0.374672155595825,
+    "final_rmse": 3.474122267641558,
+    "final_mae": 3.0360381229048605,
+    "exploration_rate": 0.3867512891709639,
+    "exploitation_rate": 0.6132487108290361
+  },
+  "strategy_performance": {
+    

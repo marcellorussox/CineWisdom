@@ -31,6 +31,7 @@ datasets/ml-*-raw/
 # Models
 models/**/*.pt
 models/**/*.pth
+models/**/*.npy
 !models/README.md
 
 # Results

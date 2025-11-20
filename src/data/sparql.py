@@ -73,7 +73,24 @@ def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1, max_retries=3):
             yield iterable[i:i + size]
 
     for chunk in batch(imdb_ids, batch_size):
-        imdb_values = " ".join([f'"{i}"' for i in chunk])
+        # Format IMDb IDs: ensure they are strings like "tt0114709"
+        formatted_chunk = []
+        formatted_to_original = {}
+        
+        for i in chunk:
+            try:
+                # Handle float/int inputs (e.g. 114709.0 -> "0114709")
+                clean_id = str(int(float(i))).zfill(7)
+                formatted_id = f"tt{clean_id}"
+                formatted_chunk.append(formatted_id)
+                formatted_to_original[formatted_id] = i
+            except ValueError:
+                # Fallback for existing strings or weird values
+                s_i = str(i)
+                formatted_chunk.append(s_i)
+                formatted_to_original[s_i] = i
+
+        imdb_values = " ".join([f'"{i}"' for i in formatted_chunk])
         query = f"""
         SELECT ?item ?imdbId WHERE {{
           VALUES ?imdbId {{ {imdb_values} }}
@@ -91,15 +108,21 @@ def query_wikidata_for_imdbid(imdb_ids, batch_size=25, sleep=1, max_retries=3):
                 bindings = results.get("results", {}).get("bindings", [])
 
                 for b in bindings:
-                    imdb_id = b.get("imdbId", {}).get("value")
+                    imdb_id_formatted = b.get("imdbId", {}).get("value")
                     wikidata_id = b.get("item", {}).get("value", "").split("/")[-1]
-                    if imdb_id and wikidata_id:
-                        mappings[imdb_id] = wikidata_id
+                    
+                    if imdb_id_formatted and wikidata_id:
+                        # Map back to original ID (e.g. 114709.0) so pandas .map() works
+                        original_id = formatted_to_original.get(imdb_id_formatted)
+                        if original_id is not None:
+                            mappings[original_id] = wikidata_id
 
                 # Success, break out of the retry loop
                 break
             except Exception as e:
-                print(f"[ERRORE] Tentativo {attempt + 1}/{max_retries} fallito per il batch: {chunk}. Errore: {e}")
+                print(f"[ERRORE] Tentativo {attempt + 1}/{max_retries} fallito per il batch (Wikidata). Errore: {e}")
+                if attempt == max_retries - 1:
+                    raise e
                 time.sleep(sleep * (attempt + 1))  # Exponential backoff
 
         time.sleep(sleep)
@@ -119,8 +142,7 @@ def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1, max_retries=3):
     single_value_fields = {
         'title': 'title',
         'directorName': 'director',
-        'runtime': 'runtime',
-        'abstract': 'abstract'
+        'runtime': 'runtime'
     }
     list_fields = {
         'actorName': 'actors',
@@ -163,13 +185,15 @@ def query_dbpedia_for_data(wikidata_ids, batch_size=25, sleep=1, max_retries=3):
                 # Success, break out of the retry loop
                 break
             except Exception as e:
-                print(f"[ERRORE] Tentativo {attempt + 1}/{max_retries} fallito per il batch: {chunk}. Errore: {e}")
+                print(f"[ERRORE] Tentativo {attempt + 1}/{max_retries} fallito per il batch (DBpedia). Errore: {e}")
+                if attempt == max_retries - 1:
+                    raise e
                 time.sleep(sleep * (attempt + 1))  # Exponential backoff
 
         time.sleep(sleep)
 
     default_entry = {
-        "title": None, "director": None, "runtime": None, "actors": [], "abstract": None
+        "title": None, "director": None, "runtime": None, "actors": []
     }
     for q in wikidata_ids:
         data.setdefault(q, default_entry.copy())

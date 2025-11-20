@@ -58,23 +58,19 @@ class RatingDataset(Dataset):
         self.ratings_df['user_idx'] = self.ratings_df['userId'].map(self.user_id_map)
         self.ratings_df['movie_idx'] = self.ratings_df['movieId'].map(self.movie_id_map)
 
-        # Merge with movie features if provided
+        # Store movie features as a dictionary for lazy loading (MEMORY OPTIMIZATION)
+        # Instead of merging 640k rows with 1024 features (= 5GB RAM), we lookup on-demand
+        self.movie_features_dict = None
         if movie_features_df is not None:
-            # Merge ratings with movie features
-            self.ratings_df = self.ratings_df.merge(
-                movie_features_df,
-                on='movieId',
-                how='left'
-            )
+            # Create a dict: {movieId: [feature_0, feature_1, ..., feature_1023]}
+            feature_cols = [col for col in movie_features_df.columns if col.startswith('ncf_feature_')]
+            self.movie_features_dict = {}
+            for _, row in movie_features_df.iterrows():
+                movie_id = row['movieId']
+                features = row[feature_cols].values.astype('float32')  # Use float32 to save memory
+                self.movie_features_dict[movie_id] = features
             
-            # FIX: Fill missing features with 0.0 to avoid NaNs in the model
-            # This happens if a movie in ratings_df is not present in movie_features_df
-            feature_cols = [col for col in movie_features_df.columns if col != 'movieId']
-            self.ratings_df[feature_cols] = self.ratings_df[feature_cols].fillna(0.0)
-            
-            # Check for missing features
-            if len(feature_cols) != feature_dim:
-                print(f"Warning: Expected {feature_dim} features, got {len(feature_cols)}")
+            print(f"  Loaded features for {len(self.movie_features_dict)} movies into lookup dict")
 
         # Check for unmapped IDs (should be rare with proper mapping)
         missing_users = self.ratings_df['user_idx'].isna().sum()
@@ -113,11 +109,15 @@ class RatingDataset(Dataset):
             'movieId': row['movieId']
         }
 
-        # Add movie features if available
-        if self.movie_features_df is not None and self.feature_dim > 0:
-            feature_cols = [col for col in self.movie_features_df.columns if col.startswith('ncf_feature_')]
-            movie_features = [float(row[col]) for col in feature_cols]
-            item['movie_features'] = torch.tensor(movie_features, dtype=torch.float)
+        # Add movie features if available (lazy loading from dict)
+        if self.movie_features_dict is not None and self.feature_dim > 0:
+            movie_id = row['movieId']
+            if movie_id in self.movie_features_dict:
+                movie_features = self.movie_features_dict[movie_id]
+            else:
+                # Movie not in features dict (shouldn't happen, but handle gracefully)
+                movie_features = torch.zeros(self.feature_dim, dtype=torch.float32)
+            item['movie_features'] = torch.tensor(movie_features, dtype=torch.float32)
 
         return item
 

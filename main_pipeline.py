@@ -109,6 +109,11 @@ def run_preprocessing(args):
     else:
         print("\n⏭️  Skipping enrichment (use --enrich to enable)")
 
+    # Deduplicate movies before normalization to avoid explosion (e.g. from bad merges)
+    print(f"\n🧹 Deduplicating movies (before: {len(movies_df)})...")
+    movies_df = movies_df.drop_duplicates(subset='movieId')
+    print(f"  - Movies after deduplication: {len(movies_df)}")
+
     # 4. Normalize and Extract Features
     print("\n🔬 Normalizing movie features...")
     normalized_path = os.path.join(paths['processed_dir'], 'normalized_movies.csv')
@@ -161,19 +166,19 @@ def run_training(train_df, val_df, test_df, args):
     print("\n🏋️ STARTING NCF TRAINING")
     print("=" * 60)
     
-    # 1. Feature Extraction (Optional)
+    # 1. Load movie features if requested
     movie_features_df = None
     feature_dim = 0
-    
     if args.use_features:
         print("\n🧬 Extracting SVD features for movies...")
-        feature_path = 'datasets/processed/movie_features_ncf_svd.csv'
+        paths = get_dataset_paths(args.dataset)
+        feature_path = os.path.join(paths['processed_dir'], 'movie_features_ncf_svd.csv')
         if os.path.exists(feature_path):
             print(f"Loading features from {feature_path}")
             movie_features_df = pd.read_csv(feature_path)
             # Check dimensions (exclude movieId)
             feature_dim = len(movie_features_df.columns) - 1
-            print(f"Loaded {feature_dim} features.")
+            print(f"✅ Loaded {feature_dim} features.")
         else:
             print("⚠️ Feature file not found. Skipping features for this run.")
             print("Run with --enrich to generate features.")
@@ -402,7 +407,8 @@ def main():
     if args.mode in ['all', 'split']:
         # If we skipped preprocess, we need to load data
         if 'ratings_df' not in locals():
-            ratings_df, _, _ = load_data()
+            paths = get_dataset_paths(args.dataset)
+            ratings_df, _, _ = load_data(data_dir=paths['raw_dir'])
             
         train_df, val_df, test_df, online_df = run_splitting(ratings_df, args)
         if args.mode == 'split':

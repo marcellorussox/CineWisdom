@@ -251,30 +251,42 @@ class KBRS:
 
         # Apply strategy filtering if needed
         if strategy == 'exploration':
-            print(f"[DEBUG KBRS] Applying EXPLORATION strategy (similarity < {self.exploration_similarity_threshold})")
-            # Filter for movies with LOW similarity (diverse)
-            filtered_ratings = []
+            print(f"[DEBUG KBRS] Applying EXPLORATION strategy (bottom 30% similarity)")
+            # Calculate similarity percentiles for filtering
+            similarities = []
             for movie_id, pred_rating in predicted_ratings:
-                # Check if this movie has low similarity to user's seen movies
-                max_similarity = self._get_max_similarity_to_seen(
+                max_sim = self._get_max_similarity_to_seen(
                     movie_id, seen_movies_ids, cosine_sim_matrix, movie_ids
                 )
-                if max_similarity < self.exploration_similarity_threshold:
-                    filtered_ratings.append((movie_id, pred_rating))
-            print(f"[DEBUG KBRS] Exploration filtering: {len(filtered_ratings)}/{len(predicted_ratings)} passed")
+                similarities.append((movie_id, pred_rating, max_sim))
+            
+            # Filter for LOW similarity (bottom 30%)
+            if similarities:
+                sim_values = [s[2] for s in similarities]
+                threshold = np.percentile(sim_values, 30)  # Bottom 30%
+                filtered_ratings = [(mid, rating) for mid, rating, sim in similarities if sim <= threshold]
+                print(f"[DEBUG KBRS] Exploration filtering: {len(filtered_ratings)}/{len(predicted_ratings)} passed (threshold={threshold:.3f})")
+            else:
+                filtered_ratings = []
             predicted_ratings = filtered_ratings[:num_recommendations]
         elif strategy == 'exploitation':
-            print(f"[DEBUG KBRS] Applying EXPLOITATION strategy (similarity > {self.exploitation_similarity_threshold})")
-            # Filter for movies with HIGH similarity (similar)
-            filtered_ratings = []
+            print(f"[DEBUG KBRS] Applying EXPLOITATION strategy (top 30% similarity)")
+            # Calculate similarity percentiles for filtering
+            similarities = []
             for movie_id, pred_rating in predicted_ratings:
-                # Check if this movie has high similarity to user's seen movies
-                max_similarity = self._get_max_similarity_to_seen(
+                max_sim = self._get_max_similarity_to_seen(
                     movie_id, seen_movies_ids, cosine_sim_matrix, movie_ids
                 )
-                if max_similarity > self.exploitation_similarity_threshold:
-                    filtered_ratings.append((movie_id, pred_rating))
-            print(f"[DEBUG KBRS] Exploitation filtering: {len(filtered_ratings)}/{len(predicted_ratings)} passed")
+                similarities.append((movie_id, pred_rating, max_sim))
+            
+            # Filter for HIGH similarity (top 30%)
+            if similarities:
+                sim_values = [s[2] for s in similarities]
+                threshold = np.percentile(sim_values, 70)  # Top 30%
+                filtered_ratings = [(mid, rating) for mid, rating, sim in similarities if sim >= threshold]
+                print(f"[DEBUG KBRS] Exploitation filtering: {len(filtered_ratings)}/{len(predicted_ratings)} passed (threshold={threshold:.3f})")
+            else:
+                filtered_ratings = []
             predicted_ratings = filtered_ratings[:num_recommendations]
 
         print(f"[DEBUG KBRS] Final recommendations: {len(predicted_ratings)}")

@@ -225,8 +225,21 @@ def enrich_movies(movies_df, batch_size=25):
         except Exception as e:
             import traceback
             traceback.print_exc()
-            print(f"\nError processing batch {i // batch_size + 1}: {e}")
-            print("Saving processed batches before exiting...")
+            
+            # Check if it's a rate limit error
+            error_msg = str(e)
+            if "429" in error_msg or "Too Many Requests" in error_msg:
+                print(f"\n❌ RATE LIMIT ERROR: SPARQL endpoint (Wikidata/DBpedia) is temporarily blocking requests.")
+                print(f"   Batch {i // batch_size + 1} failed after {batch_size} attempts.")
+                print(f"\n💡 SOLUTION:")
+                print(f"   1. Wait 30-60 minutes for the rate limit to reset")
+                print(f"   2. Re-run: python main_pipeline.py --dataset ml-1m --mode preprocess --enrich")
+                print(f"   3. The script will automatically resume from where it stopped (batch {i // batch_size + 1})")
+            else:
+                print(f"\n❌ Error processing batch {i // batch_size + 1}: {e}")
+            
+            print(f"\n📦 Saving processed data before exit...")
+            print(f"   Processed {i}/{len(imdb_ids)} movies so far.")
             progress_bar.close()
             
             # Save what we have so far
@@ -237,7 +250,8 @@ def enrich_movies(movies_df, batch_size=25):
             
             # Return original df merged with whatever we managed to process
             # This ensures we don't lose the original movies
-            print("⚠️ Enrichment failed/interrupted. Returning original data merged with partial results.")
+            print("⚠️  Enrichment interrupted. Returning original data merged with partial results.")
+            print(f"✅ Checkpoint saved to: {OUTPUT_FILE}")
             if not processed_df.empty:
                 # Merge original with processed
                 # Use 'movieId' if available, otherwise assume index alignment or imdbId
@@ -516,17 +530,45 @@ def extract_svd_features_for_ncf(
     print("\nFase 1/3: Preparazione dei dati...")
     # Isola la colonna movieId e le feature
     movie_ids = normalized_df['movieId']
-    feature_cols = normalized_df.columns.drop('movieId')
-    features = normalized_df[feature_cols]
-
+    
+    # BULLETPROOF TYPE HANDLING
+    # Drop movieId and select only feature columns
+    features = normalized_df.drop(columns=['movieId'], errors='ignore')
+    
+    # Identify and convert object columns
+    object_cols = features.select_dtypes(include=['object']).columns
+    if len(object_cols) > 0:
+        print(f"⚠️  Found {len(object_cols)} object columns, converting to numeric...")
+        for col in object_cols:
+            features[col] = pd.to_numeric(features[col], errors='coerce')
+    
+    # Force ALL columns to float32 and clean NaN/inf
+    print(f"🔧 Converting all {len(features.columns)} columns to float32...")
+    features = features.fillna(0).replace([float('inf'), float('-inf')], 0).astype('float32')
+    
     # Converti in matrice sparsa per efficienza
-    sparse_matrix = csr_matrix(features.values)
+    try:
+        sparse_matrix = csr_matrix(features.values)
+        print(f"✅ Sparse matrix created successfully: {sparse_matrix.dtype}")
+    except Exception as e:
+        print(f"❌ FATAL: Could not create sparse matrix: {e}")
+        print(f"Features dtypes: {features.dtypes.value_counts()}")
+        raise
 
-    print(f"Dataset originale: {sparse_matrix.shape[0]} righe, {sparse_matrix.shape[1]} colonne.")
-    print(f"Dimensioni originali: {sparse_matrix.shape[1]} feature")
+    n_features = sparse_matrix.shape[1]
+    print(f"Dataset originale: {sparse_matrix.shape[0]} righe, {n_features} colonne.")
+    print(f"Dimensioni originali: {n_features} feature")
+    
+    # CRITICAL FIX: Adapt n_components if we have fewer features than requested
+    if n_components >= n_features:
+        old_n = n_components
+        n_components = max(1, n_features - 1)
+        print(f"⚠️  Warning: Requested {old_n} components but only have {n_features} features.")
+        print(f"   -> Adjusting n_components to {n_components}")
+    
     print(f"Target dimensioni: {n_components} feature")
 
-    print(f"\nFase 2/3: Applicazione di TruncatedSVD...")
+    print(f"\nFase 2/3: Applicazione di TruncatedSVD con {n_components} componenti...")
     svd = TruncatedSVD(n_components=n_components, random_state=42)
 
     # Applica SVD
