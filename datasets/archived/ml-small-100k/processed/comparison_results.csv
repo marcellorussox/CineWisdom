@@ -1,4 +1,0 @@
-Configurazione,k_similar,KBRS Selection (%),Baseline Selection (%),Avg Reward,KBRS R_G
-Veloce (k=100),100,94.86666666666666,5.133333333333334,0.8831789186343552,1.0
-Bilanciata (k=500),500,100.0,0.0,0.9002794744707127,1.0
-Accurata (k=8000),8000,100.0,0.0,0.9003269284919173,1.0

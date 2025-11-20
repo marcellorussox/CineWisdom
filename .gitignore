@@ -27,6 +27,7 @@ datasets/*/processed/*.csv
 datasets/*/splits/*.csv
 datasets/*.zip
 datasets/ml-*-raw/
+datasets/archived/
 
 # Models
 models/**/*.pt
