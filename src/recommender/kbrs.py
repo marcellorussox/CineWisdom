@@ -14,8 +14,15 @@ class KBRS:
     - Movie attributes and content similarity
     - User rating patterns
 
+    Supports two recommendation strategies:
+    - EXPLORATION: Recommend diverse movies (low similarity to seen movies)
+    - EXPLOITATION: Recommend similar movies (high similarity to seen movies)
+
     Attributes:
         unique_movie_catalog (pd.DataFrame): DataFrame containing movie metadata
+        k_similar (int): Number of similar movies to consider
+        exploration_similarity_threshold (float): Threshold for exploration strategy
+        exploitation_similarity_threshold (float): Threshold for exploitation strategy
     """
 
     def __init__(self, unique_movie_catalog: pd.DataFrame) -> None:
@@ -33,6 +40,11 @@ class KBRS:
         # 🚀 PERFORMANCE: Cache per mapping movie_id -> index
         # Evita `.index[0]` lookup ripetuti (100x più veloce!)
         self._movie_id_to_index_cache = {}
+
+        # Strategy configuration
+        self.k_similar = 100  # Default number of similar movies to consider
+        self.exploration_similarity_threshold = 0.3  # Similarity < 0.3 = diverse
+        self.exploitation_similarity_threshold = 0.7  # Similarity > 0.7 = similar
 
     def _get_movie_index(self, movie_id: int, movie_ids: pd.Series) -> int:
         """
@@ -129,9 +141,16 @@ class KBRS:
             return None
 
     def recommend_movies_hybrid(self, user_id, ratings_df, cosine_sim_matrix, movie_ids, cleaned_df,
-                                num_recommendations=10, top_k_similar=100):
+                                num_recommendations=10, top_k_similar=None, strategy='exploitation'):
         """
-        🚀 OPTIMIZED: Genera raccomandazioni per un utente utilizzando un approccio ibrido ottimizzato.
+        # DEBUG: Print input info
+        print(f"\n[DEBUG KBRS] recommend_movies_hybrid called")
+        print(f"  user_id: {user_id}")
+        print(f"  num_recommendations: {num_recommendations}")
+        print(f"  top_k_similar: {top_k_similar}")
+        print(f"  strategy: {strategy}")
+
+        # 🚀 OPTIMIZED: Genera raccomandazioni per un utente utilizzando un approccio ibrido ottimizzato.
 
         OPTIMIZATIONS:
         1. Cached index lookup (100x faster)
@@ -147,7 +166,8 @@ class KBRS:
             movie_ids (pd.Series): Una Series contenente gli ID dei film nell'ordine della matrice di similarità.
             cleaned_df (pd.DataFrame): DataFrame con il catalogo unico dei film.
             num_recommendations (int): Il numero di raccomandazioni da generare.
-            top_k_similar (int): Solo considera i top-k film più simili per ogni film visto
+            top_k_similar (int, optional): Solo considera i top-k film più simili per ogni film visto. Se None, usa self.k_similar.
+            strategy (str): 'exploration' o 'exploitation'. Default 'exploitation'.
 
         Returns:
             list: Una lista di tuple (movie_id, predicted_rating) dei film raccomandati.
@@ -157,6 +177,10 @@ class KBRS:
 
         # 🚀 OPTIMIZED: Use set for O(1) lookup instead of list O(n)
         seen_movies_ids = set(user_ratings['movieId'].tolist())
+
+        # Set default top_k_similar if not provided
+        if top_k_similar is None:
+            top_k_similar = self.k_similar
 
         # Initialize dictionaries for aggregated scores
         aggregated_scores = {}
@@ -209,6 +233,13 @@ class KBRS:
             if similarity_sums[movie_id] > 0
         ]
 
+        # DEBUG: Print aggregation results
+        print(f"[DEBUG KBRS] After aggregation:")
+        print(f"  Number of movies in aggregated_scores: {len(aggregated_scores)}")
+        print(f"  Number of valid predictions: {len(predicted_ratings)}")
+        if len(predicted_ratings) > 0:
+            print(f"  Sample predictions: {predicted_ratings[:3]}")
+
         # Sort movies by predicted rating in descending order and return top-N
         # 🚀 OPTIMIZED: Use nsmallest for top-N selection (faster than sort for large lists)
         if len(predicted_ratings) > num_recommendations * 2:  # Only use nsmallest if we have many candidates
@@ -218,4 +249,240 @@ class KBRS:
             predicted_ratings = sorted(predicted_ratings, key=lambda x: x[1], reverse=True)
             predicted_ratings = predicted_ratings[:num_recommendations]
 
+        # Apply strategy filtering if needed
+        if strategy == 'exploration':
+            print(f"[DEBUG KBRS] Applying EXPLORATION strategy (bottom 30% similarity)")
+            # Calculate similarity percentiles for filtering
+            similarities = []
+            for movie_id, pred_rating in predicted_ratings:
+                max_sim = self._get_max_similarity_to_seen(
+                    movie_id, seen_movies_ids, cosine_sim_matrix, movie_ids
+                )
+                similarities.append((movie_id, pred_rating, max_sim))
+            
+            # Filter for LOW similarity (bottom 30%)
+            if similarities:
+                sim_values = [s[2] for s in similarities]
+                threshold = np.percentile(sim_values, 30)  # Bottom 30%
+                filtered_ratings = [(mid, rating) for mid, rating, sim in similarities if sim <= threshold]
+                print(f"[DEBUG KBRS] Exploration filtering: {len(filtered_ratings)}/{len(predicted_ratings)} passed (threshold={threshold:.3f})")
+            else:
+                filtered_ratings = []
+            predicted_ratings = filtered_ratings[:num_recommendations]
+            
+        elif strategy == 'exploitation':
+            print(f"[DEBUG KBRS] Applying EXPLOITATION strategy (top 30% similarity)")
+            # Calculate similarity percentiles for filtering
+            similarities = []
+            for movie_id, pred_rating in predicted_ratings:
+                max_sim = self._get_max_similarity_to_seen(
+                    movie_id, seen_movies_ids, cosine_sim_matrix, movie_ids
+                )
+                similarities.append((movie_id, pred_rating, max_sim))
+            
+            # Filter for HIGH similarity (top 30%)
+            if similarities:
+                sim_values = [s[2] for s in similarities]
+                threshold = np.percentile(sim_values, 70)  # Top 30%
+                filtered_ratings = [(mid, rating) for mid, rating, sim in similarities if sim >= threshold]
+                print(f"[DEBUG KBRS] Exploitation filtering: {len(filtered_ratings)}/{len(predicted_ratings)} passed (threshold={threshold:.3f})")
+            else:
+                filtered_ratings = []
+            predicted_ratings = filtered_ratings[:num_recommendations]
+            
+        elif strategy in ['director', 'cast', 'genre']:
+            print(f"[DEBUG KBRS] Applying SEMANTIC strategy: {strategy}")
+            predicted_ratings = self._filter_by_semantics(
+                predicted_ratings, strategy, user_id, ratings_df, cleaned_df
+            )
+            predicted_ratings = predicted_ratings[:num_recommendations]
+
+        print(f"[DEBUG KBRS] Final recommendations: {len(predicted_ratings)}")
         return predicted_ratings
+
+    def _filter_by_semantics(self, candidates, strategy, user_id, ratings_df, movies_df):
+        """Filter candidates based on semantic overlap with user preferences."""
+        # Get user's liked movies (rating >= 3.5)
+        user_likes = ratings_df[(ratings_df['userId'] == user_id) & (ratings_df['rating'] >= 3.5)]
+        liked_movie_ids = user_likes['movieId'].tolist()
+        
+        if not liked_movie_ids:
+            return candidates  # No preferences to filter by
+            
+        # Get metadata for liked movies
+        liked_meta = movies_df[movies_df['movieId'].isin(liked_movie_ids)]
+        
+        # Extract preferred attributes
+        preferences = set()
+        col_map = {
+            'director': 'dbpediaDirector',
+            'cast': 'dbpediaActors',
+            'genre': 'genres'
+        }
+        target_col = col_map.get(strategy)
+        
+        if not target_col or target_col not in movies_df.columns:
+            print(f"[WARN] Column {target_col} not found for strategy {strategy}")
+            return candidates
+            
+        for val in liked_meta[target_col].dropna():
+            if isinstance(val, list):
+                preferences.update(val)
+            elif isinstance(val, str):
+                # Handle lists stored as strings or pipe-separated
+                if '[' in val:
+                    import ast
+                    try:
+                        items = ast.literal_eval(val)
+                        preferences.update(items)
+                    except:
+                        pass
+                else:
+                    preferences.update(val.split('|'))
+        
+        # Filter candidates
+        filtered = []
+        for movie_id, score in candidates:
+            movie_row = movies_df[movies_df['movieId'] == movie_id]
+            if movie_row.empty:
+                continue
+                
+            val = movie_row.iloc[0][target_col]
+            
+            # Robust check for null/empty
+            if val is None: continue
+            if isinstance(val, float) and pd.isna(val): continue
+            if isinstance(val, list) and not val: continue
+                
+            movie_attrs = set()
+            if isinstance(val, list):
+                movie_attrs.update(val)
+            elif isinstance(val, str):
+                if '[' in val:
+                    import ast
+                    try:
+                        items = ast.literal_eval(val)
+                        movie_attrs.update(items)
+                    except:
+                        pass
+                else:
+                    movie_attrs.update(val.split('|'))
+            
+            # Check overlap
+            if not movie_attrs.isdisjoint(preferences):
+                filtered.append((movie_id, score))
+                
+        print(f"[DEBUG KBRS] Semantic filtering ({strategy}): {len(filtered)}/{len(candidates)} passed")
+        
+        # If filtering is too aggressive (returns 0), fall back to top candidates
+        if not filtered:
+            print("[DEBUG KBRS] Fallback: Semantic filter returned 0, using original candidates")
+            return candidates
+            
+        return filtered
+
+
+
+    def _get_max_similarity_to_seen(self, movie_id, seen_movies_ids, cosine_sim_matrix, movie_ids):
+        """
+        Calcola la massima similarità tra un film e i film visti dall'utente.
+
+        Args:
+            movie_id: ID del film da valutare
+            seen_movies_ids: Set di ID dei film visti dall'utente
+            cosine_sim_matrix: Matrice di similarità
+            movie_ids: Series con gli ID dei film
+
+        Returns:
+            float: Massima similarità trovata (0.0 se nessuna similarità)
+        """
+        try:
+            movie_idx = self._get_movie_index(movie_id, movie_ids)
+        except ValueError:
+            return 0.0
+
+        max_similarity = 0.0
+
+        for seen_movie_id in seen_movies_ids:
+            try:
+                seen_movie_idx = self._get_movie_index(seen_movie_id, movie_ids)
+                similarity = cosine_sim_matrix[movie_idx, seen_movie_idx]
+                max_similarity = max(max_similarity, similarity)
+            except ValueError:
+                continue
+
+        return max_similarity
+
+    def recommend_for_exploration(
+        self,
+        user_id,
+        ratings_df,
+        cosine_sim_matrix,
+        movie_ids,
+        cleaned_df,
+        num_recommendations=10
+    ):
+        """
+        Raccomanda film per EXPLORATION (bassa similarità, alta diversità).
+
+        Questo metodo filtra i film raccomandati per includere solo quelli con
+        bassa similarità (< 0.3) rispetto ai film già visti dall'utente,
+        incoraggiando l'esplorazione di nuovi generi/categorie.
+
+        Args:
+            user_id (int): L'ID dell'utente.
+            ratings_df (pd.DataFrame): DataFrame con i dati di rating.
+            cosine_sim_matrix (np.ndarray): La matrice di similarità del coseno.
+            movie_ids (pd.Series): Una Series contenente gli ID dei film nell'ordine della matrice di similarità.
+            cleaned_df (pd.DataFrame): DataFrame con il catalogo unico dei film.
+            num_recommendations (int): Il numero di raccomandazioni da generare.
+
+        Returns:
+            list: Una lista di tuple (movie_id, predicted_rating) dei film raccomandati per exploration.
+        """
+        return self.recommend_movies_hybrid(
+            user_id=user_id,
+            ratings_df=ratings_df,
+            cosine_sim_matrix=cosine_sim_matrix,
+            movie_ids=movie_ids,
+            cleaned_df=cleaned_df,
+            num_recommendations=num_recommendations,
+            strategy='exploration'
+        )
+
+    def recommend_for_exploitation(
+        self,
+        user_id,
+        ratings_df,
+        cosine_sim_matrix,
+        movie_ids,
+        cleaned_df,
+        num_recommendations=10
+    ):
+        """
+        Raccomanda film per EXPLOITATION (alta similarità, alta sicurezza).
+
+        Questo metodo filtra i film raccomandati per includere solo quelli con
+        alta similarità (> 0.7) rispetto ai film già visti dall'utente,
+        sfruttando le preferenze note per massimizzare la soddisfazione.
+
+        Args:
+            user_id (int): L'ID dell'utente.
+            ratings_df (pd.DataFrame): DataFrame con i dati di rating.
+            cosine_sim_matrix (np.ndarray): La matrice di similarità del coseno.
+            movie_ids (pd.Series): Una Series contenente gli ID dei film nell'ordine della matrice di similarità.
+            cleaned_df (pd.DataFrame): DataFrame con il catalogo unico dei film.
+            num_recommendations (int): Il numero di raccomandazioni da generare.
+
+        Returns:
+            list: Una lista di tuple (movie_id, predicted_rating) dei film raccomandati per exploitation.
+        """
+        return self.recommend_movies_hybrid(
+            user_id=user_id,
+            ratings_df=ratings_df,
+            cosine_sim_matrix=cosine_sim_matrix,
+            movie_ids=movie_ids,
+            cleaned_df=cleaned_df,
+            num_recommendations=num_recommendations,
+            strategy='exploitation'
+        )

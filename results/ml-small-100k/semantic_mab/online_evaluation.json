@@ -1,0 +1,60 @@
+{
+  "final_metrics": {
+    "total_interactions": 20168,
+    "mean_reward": 0.8402649431846837,
+    "final_rmse": 0.9247203851196406,
+    "final_mae": 0.718807755668923,
+    "exploration_rate": 0.3243256644188814,
+    "exploitation_rate": 0.1324375247917493
+  },
+  "strategy_performance": {
+    "reward_mean": {
+      "cast": 0.8272,
+      "director": 0.844,
+      "exploration": 0.8449,
+      "genre": 0.8261
+    },
+    "reward_std": {
+      "cast": 0.1369,
+      "director": 0.1272,
+      "exploration": 0.1269,
+      "genre": 0.1334
+    },
+    "reward_count": {
+      "cast": 2671,
+      "director": 6541,
+      "exploration": 8789,
+      "genre": 2167
+    },
+    "predicted_rating_<lambda>": {
+      "cast": 0.9921,
+      "director": 0.9057,
+      "exploration": 0.9015,
+      "genre": 0.9863
+    }
+  },
+  "mab_statistics": {
+    "pulls": [
+      6541,
+      2671,
+      2167,
+      8789
+    ],
+    "rates": {
+      "strategy_0_rate": 0.3243256644188814,
+      "strategy_1_rate": 0.1324375247917493,
+      "strategy_2_rate": 0.10744744149147163,
+      "strategy_3_rate": 0.43578936929789763
+    },
+    "expected_values": [
+      0.843919356519395,
+      0.8269284506579474,
+      0.8257760358618235,
+      0.8448653229495294
+    ]
+  },
+  "learning": {
+    "final_regret": 94.36317472677823,
+    "avg_regret_last_100": 0.016069137367210544
+  }
+}

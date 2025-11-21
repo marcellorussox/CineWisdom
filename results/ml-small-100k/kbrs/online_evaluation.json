@@ -1,0 +1,42 @@
+{
+  "final_metrics": {
+    "total_interactions": 20168,
+    "mean_reward": 0.8402649431846837,
+    "final_rmse": 0.9247203851196406,
+    "final_mae": 0.718807755668923,
+    "exploration_rate": 0.43668187227290756,
+    "exploitation_rate": 0.5633181277270924
+  },
+  "strategy_performance": {
+    "reward_mean": {
+      "exploitation": 0.846,
+      "exploration": 0.8328
+    },
+    "reward_std": {
+      "exploitation": 0.1277,
+      "exploration": 0.1309
+    },
+    "reward_count": {
+      "exploitation": 11361,
+      "exploration": 8807
+    },
+    "predicted_rating_<lambda>": {
+      "exploitation": 0.9001,
+      "exploration": 0.9555
+    }
+  },
+  "mab_statistics": {
+    "exploration_pulls": 8807,
+    "exploitation_pulls": 11361,
+    "exploration_rate": 0.43668187227290756,
+    "exploitation_rate": 0.5633181277270924,
+    "expected_values": [
+      0.8327422282088313,
+      0.8459770382695694
+    ]
+  },
+  "learning": {
+    "final_regret": 116.42988767386498,
+    "avg_regret_last_100": 0.017163282197986972
+  }
+}
