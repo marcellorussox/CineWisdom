@@ -162,14 +162,15 @@ class KBRSEvaluator:
         
         # 3. Learning metrics
         total_pulls = mab_stats['pulls'].sum()
-        exploration_rate = mab_stats['pulls'][0] / total_pulls
-        exploitation_rate = mab_stats['pulls'][1] / total_pulls
+        strategy_rates = {
+            f"strategy_{i}_rate": count / total_pulls 
+            for i, count in enumerate(mab_stats['pulls'])
+        }
         
         # 4. Regret (simplified: difference from best arm)
         best_arm_reward = mab_stats['avg_rewards'].max()
         cumulative_regret = []
         for i in range(len(history)):
-            arm_used = history.iloc[i]['arm']
             reward_got = history.iloc[i]['reward']
             regret = best_arm_reward - reward_got
             cumulative_regret.append(regret)
@@ -179,10 +180,8 @@ class KBRSEvaluator:
             'final_metrics': simulation_results['summary'],
             'strategy_performance': strategy_performance,
             'mab_statistics': {
-                'exploration_pulls': int(mab_stats['pulls'][0]),
-                'exploitation_pulls': int(mab_stats['pulls'][1]),
-                'exploration_rate': float(exploration_rate),
-                'exploitation_rate': float(exploitation_rate),
+                'pulls': [int(p) for p in mab_stats['pulls']],
+                'rates': strategy_rates,
                 'expected_values': mab_stats['expected_values'].tolist()
             },
             'learning': {
@@ -194,8 +193,8 @@ class KBRSEvaluator:
         print(f"\n✅ Online Results:")
         print(f"  Final RMSE:        {simulation_results['summary']['final_rmse']:.4f}")
         print(f"  Mean Reward:       {simulation_results['summary']['mean_reward']:.4f}")
-        print(f"  Exploration Rate:  {exploration_rate:.2%}")
-        print(f"  Exploitation Rate: {exploitation_rate:.2%}")
+        for k, v in strategy_rates.items():
+            print(f"  {k}: {v:.2%}")
         
         # Save
         with open(f"{self.results_dir}/online_evaluation.json", 'w') as f:
@@ -246,10 +245,11 @@ class KBRSEvaluator:
         # 3. Strategy Selection Over Time
         ax = axes[0, 2]
         window = 100
-        history['exploration_rate_rolling'] = (history['arm'] == 0).rolling(window).mean()
-        history['exploitation_rate_rolling'] = (history['arm'] == 1).rolling(window).mean()
-        ax.plot(history.index, history['exploration_rate_rolling'], label='Exploration', linewidth=2)
-        ax.plot(history.index, history['exploitation_rate_rolling'], label='Exploitation', linewidth=2)
+        strategies = history['strategy'].unique()
+        for strategy in strategies:
+            rate_rolling = (history['strategy'] == strategy).rolling(window).mean()
+            ax.plot(history.index, rate_rolling, label=strategy, linewidth=2)
+        
         ax.set_title('Strategy Selection Rate (window=100)', fontsize=14, fontweight='bold')
         ax.set_xlabel('Interaction')
         ax.set_ylabel('Selection Rate')
@@ -263,7 +263,7 @@ class KBRSEvaluator:
         ax.set_xlabel('Strategy')
         ax.set_ylabel('Reward')
         plt.sca(ax)
-        plt.xticks(rotation=0)
+        plt.xticks(rotation=45)
         
         # 5. Cumulative Regret
         ax = axes[1, 1]
@@ -276,11 +276,18 @@ class KBRSEvaluator:
         # 6. Strategy Pulls Distribution
         ax = axes[1, 2]
         pulls = mab_stats['pulls']
-        strategies = ['Exploration', 'Exploitation']
-        colors = ['#3498db', '#e74c3c']
-        bars = ax.bar(strategies, pulls, color=colors, alpha=0.7, edgecolor='black')
+        strategies_list = [f"Arm {i}" for i in range(len(pulls))]
+        # Try to map arm indices to names if possible, otherwise use generic names
+        if 'strategy' in history.columns:
+             # Create mapping from arm index to strategy name
+             arm_map = history[['arm', 'strategy']].drop_duplicates().set_index('arm')['strategy'].to_dict()
+             strategies_list = [arm_map.get(i, f"Arm {i}") for i in range(len(pulls))]
+
+        bars = ax.bar(strategies_list, pulls, alpha=0.7, edgecolor='black')
         ax.set_title('Total Strategy Selections', fontsize=14, fontweight='bold')
         ax.set_ylabel('Number of Pulls')
+        plt.sca(ax)
+        plt.xticks(rotation=45)
         
         # Add value labels on bars
         for bar in bars:
@@ -329,10 +336,8 @@ class KBRSEvaluator:
 - **Total Interactions**: {online_results['final_metrics']['total_interactions']:,}
 
 ### Strategy Selection
-- **Exploration Rate**: {online_results['mab_statistics']['exploration_rate']:.2%}
-- **Exploitation Rate**: {online_results['mab_statistics']['exploitation_rate']:.2%}
-- **Exploration Pulls**: {online_results['mab_statistics']['exploration_pulls']:,}
-- **Exploitation Pulls**: {online_results['mab_statistics']['exploitation_pulls']:,}
+{chr(10).join([f"- **{k}**: {v:.2%}" for k, v in online_results['mab_statistics']['rates'].items()])}
+- **Total Pulls**: {sum(online_results['mab_statistics']['pulls']):,}
 
 ### MAB Learning
 - **Final Cumulative Regret**: {online_results['learning']['final_regret']:.2f}

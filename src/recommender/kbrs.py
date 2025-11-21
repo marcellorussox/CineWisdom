@@ -269,6 +269,7 @@ class KBRS:
             else:
                 filtered_ratings = []
             predicted_ratings = filtered_ratings[:num_recommendations]
+            
         elif strategy == 'exploitation':
             print(f"[DEBUG KBRS] Applying EXPLOITATION strategy (top 30% similarity)")
             # Calculate similarity percentiles for filtering
@@ -288,9 +289,99 @@ class KBRS:
             else:
                 filtered_ratings = []
             predicted_ratings = filtered_ratings[:num_recommendations]
+            
+        elif strategy in ['director', 'cast', 'genre']:
+            print(f"[DEBUG KBRS] Applying SEMANTIC strategy: {strategy}")
+            predicted_ratings = self._filter_by_semantics(
+                predicted_ratings, strategy, user_id, ratings_df, cleaned_df
+            )
+            predicted_ratings = predicted_ratings[:num_recommendations]
 
         print(f"[DEBUG KBRS] Final recommendations: {len(predicted_ratings)}")
         return predicted_ratings
+
+    def _filter_by_semantics(self, candidates, strategy, user_id, ratings_df, movies_df):
+        """Filter candidates based on semantic overlap with user preferences."""
+        # Get user's liked movies (rating >= 3.5)
+        user_likes = ratings_df[(ratings_df['userId'] == user_id) & (ratings_df['rating'] >= 3.5)]
+        liked_movie_ids = user_likes['movieId'].tolist()
+        
+        if not liked_movie_ids:
+            return candidates  # No preferences to filter by
+            
+        # Get metadata for liked movies
+        liked_meta = movies_df[movies_df['movieId'].isin(liked_movie_ids)]
+        
+        # Extract preferred attributes
+        preferences = set()
+        col_map = {
+            'director': 'dbpediaDirector',
+            'cast': 'dbpediaActors',
+            'genre': 'genres'
+        }
+        target_col = col_map.get(strategy)
+        
+        if not target_col or target_col not in movies_df.columns:
+            print(f"[WARN] Column {target_col} not found for strategy {strategy}")
+            return candidates
+            
+        for val in liked_meta[target_col].dropna():
+            if isinstance(val, list):
+                preferences.update(val)
+            elif isinstance(val, str):
+                # Handle lists stored as strings or pipe-separated
+                if '[' in val:
+                    import ast
+                    try:
+                        items = ast.literal_eval(val)
+                        preferences.update(items)
+                    except:
+                        pass
+                else:
+                    preferences.update(val.split('|'))
+        
+        # Filter candidates
+        filtered = []
+        for movie_id, score in candidates:
+            movie_row = movies_df[movies_df['movieId'] == movie_id]
+            if movie_row.empty:
+                continue
+                
+            val = movie_row.iloc[0][target_col]
+            
+            # Robust check for null/empty
+            if val is None: continue
+            if isinstance(val, float) and pd.isna(val): continue
+            if isinstance(val, list) and not val: continue
+                
+            movie_attrs = set()
+            if isinstance(val, list):
+                movie_attrs.update(val)
+            elif isinstance(val, str):
+                if '[' in val:
+                    import ast
+                    try:
+                        items = ast.literal_eval(val)
+                        movie_attrs.update(items)
+                    except:
+                        pass
+                else:
+                    movie_attrs.update(val.split('|'))
+            
+            # Check overlap
+            if not movie_attrs.isdisjoint(preferences):
+                filtered.append((movie_id, score))
+                
+        print(f"[DEBUG KBRS] Semantic filtering ({strategy}): {len(filtered)}/{len(candidates)} passed")
+        
+        # If filtering is too aggressive (returns 0), fall back to top candidates
+        if not filtered:
+            print("[DEBUG KBRS] Fallback: Semantic filter returned 0, using original candidates")
+            return candidates
+            
+        return filtered
+
+
 
     def _get_max_similarity_to_seen(self, movie_id, seen_movies_ids, cosine_sim_matrix, movie_ids):
         """

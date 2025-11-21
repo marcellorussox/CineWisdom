@@ -18,8 +18,10 @@ class ThompsonSamplingKBRS:
     Thompson Sampling for KBRS strategy selection.
     
     Arms:
-        0: KBRS Exploration (recommend diverse movies)
-        1: KBRS Exploitation (recommend similar movies)
+        0: Director
+        1: Cast
+        2: Genre
+        3: Exploration
     """
     
     def __init__(self, n_arms: int = 2):
@@ -121,11 +123,15 @@ class OnlineKBRSSimulator:
         self.movies_catalog = movies_catalog
         self.rating_scale = rating_scale
         
-        # Initialize MAB
-        self.mab = ThompsonSamplingKBRS(n_arms=2)
+        # Initialize MAB with 4 arms for Semantic Strategies
+        # 0: Director (Semantic Exploitation)
+        # 1: Cast (Semantic Exploitation)
+        # 2: Genre (Baseline Exploitation)
+        # 3: Exploration (Diversity)
+        self.mab = ThompsonSamplingKBRS(n_arms=4)
         
         # Strategy names
-        self.strategies = ['exploration', 'exploitation']
+        self.strategies = ['director', 'cast', 'genre', 'exploration']
         
         # History
         self.history = []
@@ -251,8 +257,9 @@ class OnlineKBRSSimulator:
                 
             except Exception as e:
                 # Handle edge cases gracefully
-                if verbose and idx % 1000 == 0:
-                    print(f"Warning at step {idx}: {e}")
+                print(f"❌ Error at step {idx}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
             
             # 5. Add interaction to history (for next predictions)
@@ -267,6 +274,21 @@ class OnlineKBRSSimulator:
         # Compute summary statistics
         history_df = pd.DataFrame(self.history)
         
+        if history_df.empty:
+            print("❌ CRITICAL: Simulation history is empty! All iterations failed.")
+            return {
+                'history': pd.DataFrame(columns=['step', 'user_id', 'movie_id', 'true_rating', 'predicted_rating', 'strategy', 'arm', 'reward', 'in_recommendations', 'n_recommendations']),
+                'mab_stats': self.mab.get_statistics(),
+                'summary': {
+                    'total_interactions': 0,
+                    'mean_reward': 0.0,
+                    'final_rmse': 0.0,
+                    'final_mae': 0.0,
+                    'exploration_rate': 0.0,
+                    'exploitation_rate': 0.0,
+                }
+            }
+
         results = {
             'history': history_df,
             'mab_stats': self.mab.get_statistics(),

@@ -58,17 +58,34 @@ This yielded a realistic RMSE (~0.95) compared to the "cheated" one.
 
 ---
 
+### 3.4 Semantic MAB (The "Semantic" Leap)
+**Problem:** Generic "Exploitation" (Top-N Similarity) is opaque. It doesn't tell us *why* a movie is similar (Director? Genre? Cast?).
+**Solution:** We split the Exploitation arm into specific **Semantic Arms**:
+*   **Director Arm**: Explicitly filters for movies by directors the user likes.
+*   **Cast Arm**: Filters for movies featuring actors the user likes.
+*   **Genre Arm**: Filters for movies in preferred genres.
+*   **Exploration Arm**: Maintains diversity (Bottom 30% similarity).
+**Benefit:** This allows the MAB to learn *which specific feature* drives a user's preference (e.g., "This user follows directors, while that user follows actors").
+
+---
+
 ## 4. Strategies Implemented
 
-1.  **Exploitation Arm**:
-    *   Logic: Recommend movies strictly similar to what the user liked.
-    *   Goal: Minimize immediate error (RMSE).
-    *   Implementation: Filter candidates with Similarity > 70th percentile.
+1.  **Director Arm** (Semantic Exploitation):
+    *   Logic: Recommend movies directed by directors the user has rated highly (≥ 3.5).
+    *   Fallback: If no match found, falls back to generic Top-N similarity.
 
-2.  **Exploration Arm**:
-    *   Logic: Recommend movies diverse from the user's profile.
+2.  **Cast Arm** (Semantic Exploitation):
+    *   Logic: Recommend movies featuring actors the user likes.
+    *   Strength: High discovery potential for star-driven users.
+
+3.  **Genre Arm** (Semantic Exploitation):
+    *   Logic: Recommend movies sharing genres with user favorites.
+    *   Strength: High recall, safe baseline.
+
+4.  **Exploration Arm**:
+    *   Logic: Recommend movies diverse from the user's profile (Similarity < 30th percentile).
     *   Goal: Discover new interests and avoid "filter bubbles".
-    *   Implementation: Filter candidates with Similarity < 30th percentile.
 
 ---
 

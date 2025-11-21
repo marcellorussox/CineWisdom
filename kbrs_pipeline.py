@@ -35,7 +35,7 @@ RAW_DIR = f'datasets/{DATASET}/raw'
 PROCESSED_DIR = f'datasets/{DATASET}/processed'
 SPLITS_DIR = 'datasets/splits'
 MODELS_DIR = f'models/kbrs/{DATASET}'
-RESULTS_DIR = f'results/{DATASET}/kbrs'
+RESULTS_DIR = f'results/{DATASET}/semantic_mab'
 
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 os.makedirs(MODELS_DIR, exist_ok=True)
@@ -121,6 +121,8 @@ def step3_split_data():
     print("STEP 3: SPLIT DATA")
     print("="*60)
     
+
+    
     # Load ratings
     ratings_df, _, _ = load_data(data_dir=RAW_DIR)
     
@@ -197,6 +199,23 @@ def step5_online_mab_simulation():
     train_df = pd.read_csv(f"{SPLITS_DIR}/train.csv")
     online_df = pd.read_csv(f"{SPLITS_DIR}/online.csv")
     movies_df = pd.read_csv(f"{PROCESSED_DIR}/movies_enriched.csv")
+    
+    # Optimize: Pre-parse list columns to avoid ast.literal_eval in loop
+    import ast
+    print("⚡ Optimizing dataframe columns...")
+    for col in ['dbpediaDirector', 'dbpediaActors', 'genres']:
+        if col in movies_df.columns:
+            # Handle both string lists "['a', 'b']" and pipe-separated "a|b"
+            def parse_list(x):
+                if not isinstance(x, str): return []
+                if x.startswith('[') and x.endswith(']'):
+                    try:
+                        return ast.literal_eval(x)
+                    except:
+                        return []
+                return x.split('|')
+            
+            movies_df[col] = movies_df[col].apply(parse_list)
     movie_ids = pd.read_csv(f"{MODELS_DIR}/movie_ids.csv")['movieId']
     cosine_sim_matrix = np.load(f"{MODELS_DIR}/cosine_sim_matrix.npy")
     
