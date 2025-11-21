@@ -1,5 +1,5 @@
 """
-Evaluation package for CineWisdom NCF+MAB System.
+Evaluation package for CineWisdom KBRS System.
 """
 
 from .metrics import RMSE, MAE, PrecisionAtK, NDCGAtK

@@ -29,29 +29,7 @@ class DataConfig:
     random_state: int = 42
 
 
-@dataclass
-class NCFConfig:
-    """Configuration for Neural Collaborative Filtering model."""
-    # Embedding dimensions
-    user_embedding_dim: int = 128
-    movie_embedding_dim: int = 128
 
-    # MLP layers
-    mlp_hidden_dims: list[int] = field(default_factory=lambda: [256, 128, 64])
-    mlp_dropout: float = 0.2
-
-    # Training hyperparameters
-    learning_rate: float = 0.001
-    batch_size: int = 512
-    num_epochs: int = 50
-    weight_decay: float = 1e-5
-
-    # Early stopping
-    patience: int = 5
-    min_delta: float = 0.001
-
-    # Device
-    device: str = "cuda"  # or "cpu"
 
 
 @dataclass
@@ -103,7 +81,7 @@ class ExperimentConfig:
 class CineWisdomConfig:
     """Master configuration for CineWisdom system."""
     data: DataConfig = field(default_factory=DataConfig)
-    ncf: NCFConfig = field(default_factory=NCFConfig)
+
     mab: MABConfig = field(default_factory=MABConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
     experiment: ExperimentConfig = field(default_factory=ExperimentConfig)
@@ -115,7 +93,7 @@ class CineWisdomConfig:
         """Convert configuration to dictionary."""
         return {
             'data': self.data.__dict__,
-            'ncf': self.ncf.__dict__,
+
             'mab': self.mab.__dict__,
             'reward': self.reward.__dict__,
             'experiment': self.experiment.__dict__,

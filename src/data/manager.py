@@ -12,9 +12,10 @@ from multiprocessing import Pool, cpu_count
 from scipy.sparse import csr_matrix
 
 
+
 OUTPUT_FOLDER = "datasets/processed"
 OUTPUT_FILE = os.path.join(OUTPUT_FOLDER, "dbpedia_data.csv")
-CLEANED_FILE = os.path.join(OUTPUT_FOLDER, "dbpedia_data_cleaned.csv")
+
 
 
 # -----------------------------------------------------------
@@ -66,77 +67,7 @@ def load_data(data_dir=None):
         return None, None, None
 
 
-# -----------------------------------------------------------
-# Merge two DataFrames on a common column
-# -----------------------------------------------------------
-def join_dataframes(df1, df2, on='movieId', how='inner'):
-    if df1 is None or df2 is None:
-        return pd.DataFrame()
-    return pd.merge(df1, df2, on=on, how=how)
 
-
-def clean_partial_rows(df, output_file=CLEANED_FILE):
-    """
-    Cleans a DataFrame by removing rows with empty values and prints statistics.
-
-    Args:
-        df (pd.DataFrame): The input DataFrame.
-        output_file (str): The name of the file to save the cleaned data.
-
-    Returns:
-        pd.DataFrame: The cleaned DataFrame.
-    """
-    # Count empty values before cleaning the data
-    initial_row_count = len(df)
-    missing_values_per_column = df.isnull().sum()
-
-    # Remove rows with any empty values
-    cleaned_df = df.dropna()
-
-    # Count rows after cleaning
-    final_row_count = len(cleaned_df)
-    deleted_records_count = initial_row_count - final_row_count
-
-    # Print statistics
-    print("\n--- Cleaning Report ---")
-    print(f"Total records before cleaning: {initial_row_count}")
-    print(f"Total records after cleaning: {final_row_count}")
-    print(f"Deleted records: {deleted_records_count}")
-    print("\nEmpty records per column (before cleaning):")
-    print(missing_values_per_column.to_string())
-
-    # Save the cleaned DataFrame to a new CSV file
-    cleaned_df.to_csv(output_file, index=False)
-    print(f"\nCleaned data has been saved to '{output_file}'.")
-
-    return cleaned_df
-
-
-def drop_columns(df, columns_to_drop):
-    """
-    Elimina una o più colonne da un DataFrame di pandas.
-
-    Args:
-        df (pd.DataFrame): Il DataFrame di input.
-        columns_to_drop (str o list): Il nome della colonna (stringa)
-                                      o una lista di nomi delle colonne da eliminare.
-
-    Returns:
-        pd.DataFrame: Un nuovo DataFrame senza le colonne specificate.
-    """
-    # Se il nome della colonna non è in una lista, lo convertiamo in una lista
-    if isinstance(columns_to_drop, str):
-        columns_to_drop = [columns_to_drop]
-
-    # Controlla se le colonne specificate esistono nel DataFrame
-    for col in columns_to_drop:
-        if col not in df.columns:
-            print(f"Attenzione: La colonna '{col}' non esiste nel DataFrame.")
-            return df.copy()  # Restituisce una copia del DataFrame originale
-
-    # Utilizziamo .drop() per eliminare le colonne. axis=1 indica di operare sulle colonne.
-    # inplace=False crea una copia del DataFrame modificato senza alterare l'originale.
-    return df.drop(columns=columns_to_drop, axis=1, inplace=False)
 
 
 # -----------------------------------------------------------
@@ -419,179 +350,9 @@ def normalize_movie_data_parallel(df: pd.DataFrame,
         return final_df_new_chunks
 
 
-def normalize_ratings_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalizza e pre-elabora un DataFrame di rating.
-
-    La funzione si concentra sulla creazione di una matrice di interazione sparsa
-    tra utenti e film, normalizzando i punteggi.
-
-    Args:
-        df (pd.DataFrame): Il DataFrame di input contenente i rating.
-                           Assumiamo che le colonne siano 'userId', 'movieId' e 'rating'.
-
-    Returns:
-        pd.DataFrame: Il DataFrame normalizzato.
-    """
-    print("Fase 1/2: Normalizzazione del punteggio...")
-
-    # 1. Normalizzazione Min-Max del rating
-    # Rimuoviamo il timestamp come richiesto dall'assunzione
-    if 'timestamp' in df.columns:
-        df = df.drop(columns=['timestamp'])
-
-    scaler = MinMaxScaler()
-    df['rating_normalized'] = scaler.fit_transform(df[['rating']])
-
-    print("Fase 2/2: Creazione di una matrice di interazione sparsa (User-Item)...")
-
-    # 2. Creazione della matrice di interazione sparsa
-    # Creiamo un DataFrame pivot per avere utenti sulle righe e film sulle colonne
-    # I valori saranno i rating normalizzati.
-    user_movie_matrix = df.pivot(index='userId', columns='movieId', values='rating_normalized').fillna(0)
-
-    # Per una maggiore efficienza di memoria, convertiamo il DataFrame in una matrice sparsa
-    # Questo è l'output finale, che può essere usato per modelli di raccomandazione
-    # basati su matrice di interazione.
-    sparse_matrix = csr_matrix(user_movie_matrix.values)
-
-    # Restituiamo il DataFrame denso per una migliore visualizzazione e un facile salvataggio,
-    # ma la matrice sparsa è l'ideale per l'addestramento.
-    return user_movie_matrix
 
 
-def compress_kbrs_dataset(df: pd.DataFrame, n_components: int = 128) -> pd.DataFrame:
-    """
-    Comprime un DataFrame normalizzato per KBRS utilizzando TruncatedSVD
-    per ridurre la dimensionalità, mantenendo la qualità dei dati.
-
-    Args:
-        df (pd.DataFrame): Il DataFrame normalizzato e pre-elaborato in input.
-                           Assumiamo che la prima colonna sia 'movieId' e le
-                           altre siano le feature binarie/numeriche.
-        n_components (int): Il numero di componenti (dimensioni) da mantenere.
-
-    Returns:
-        pd.DataFrame: Il DataFrame compresso con le nuove feature embedding.
-    """
-
-    print("Fase 1/3: Preparazione dei dati...")
-    # Isola la colonna movieId e le feature
-    movie_ids = df['movieId']
-    feature_cols = df.columns.drop('movieId')
-    features = df[feature_cols]
-
-    # Converti il DataFrame delle feature in una matrice sparsa CSR.
-    sparse_matrix = csr_matrix(features.values)
-
-    print(f"Dataset originale: {sparse_matrix.shape[0]} righe, {sparse_matrix.shape[1]} colonne.")
-    print(f"Dimensioni occupate in memoria (stimato, solo features): {sparse_matrix.data.nbytes / 1024 ** 2:.2f} MB")
-
-    print(f"Fase 2/3: Applicazione di TruncatedSVD con {n_components} componenti...")
-    svd = TruncatedSVD(n_components=n_components, random_state=42)
-
-    embeddings = svd.fit_transform(sparse_matrix)
-
-    print("Fase 3/3: Creazione del nuovo DataFrame compresso...")
-    # Crea un nuovo DataFrame con le feature compresse
-    # e aggiungi la colonna movieId come identificativo.
-    compressed_df = pd.DataFrame(embeddings, columns=[f'feature_{i}' for i in range(n_components)])
-    compressed_df.insert(0, 'movieId', movie_ids.values)  # Inserisce movieId all'inizio
-
-    print(f"Dataset compresso: {compressed_df.shape[0]} righe, {compressed_df.shape[1]} colonne.")
-    print(f"Varianza spiegata: {svd.explained_variance_ratio_.sum():.4f}")
-
-    return compressed_df
 
 
-def extract_svd_features_for_ncf(
-    normalized_df: pd.DataFrame,
-    n_components: int = 4096,  # SVD: 16k → 4096, poi proiezione learnable 4096 → 128
-    output_path: str = 'datasets/processed/movie_features_ncf_svd.csv'
-) -> tuple[pd.DataFrame, TruncatedSVD]:
-    """
-    Estrae feature SVD per NCF dal dataset normalizzato con preprocessing completo.
 
-    Questa funzione applica TruncatedSVD alle feature arricchite (DBpedia + generi)
-    per ridurre la dimensionalità in modo controllato, mantenendo la varianza semantica.
-
-    Args:
-        normalized_df: DataFrame normalizzato con feature DBpedia e MovieLens
-        n_components: Numero di componenti SVD (default 2048 per NCF)
-        output_path: Percorso per salvare le feature
-
-    Returns:
-        Tuple di (movie_features_df, svd_model)
-    """
-    print("\n" + "="*60)
-    print("EXTRACTING SVD FEATURES FOR NCF")
-    print("="*60)
-
-    print("\nFase 1/3: Preparazione dei dati...")
-    # Isola la colonna movieId e le feature
-    movie_ids = normalized_df['movieId']
-    
-    # BULLETPROOF TYPE HANDLING
-    # Drop movieId and select only feature columns
-    features = normalized_df.drop(columns=['movieId'], errors='ignore')
-    
-    # Identify and convert object columns
-    object_cols = features.select_dtypes(include=['object']).columns
-    if len(object_cols) > 0:
-        print(f"⚠️  Found {len(object_cols)} object columns, converting to numeric...")
-        for col in object_cols:
-            features[col] = pd.to_numeric(features[col], errors='coerce')
-    
-    # Force ALL columns to float32 and clean NaN/inf
-    print(f"🔧 Converting all {len(features.columns)} columns to float32...")
-    features = features.fillna(0).replace([float('inf'), float('-inf')], 0).astype('float32')
-    
-    # Converti in matrice sparsa per efficienza
-    try:
-        sparse_matrix = csr_matrix(features.values)
-        print(f"✅ Sparse matrix created successfully: {sparse_matrix.dtype}")
-    except Exception as e:
-        print(f"❌ FATAL: Could not create sparse matrix: {e}")
-        print(f"Features dtypes: {features.dtypes.value_counts()}")
-        raise
-
-    n_features = sparse_matrix.shape[1]
-    print(f"Dataset originale: {sparse_matrix.shape[0]} righe, {n_features} colonne.")
-    print(f"Dimensioni originali: {n_features} feature")
-    
-    # CRITICAL FIX: Adapt n_components if we have fewer features than requested
-    if n_components >= n_features:
-        old_n = n_components
-        n_components = max(1, n_features - 1)
-        print(f"⚠️  Warning: Requested {old_n} components but only have {n_features} features.")
-        print(f"   -> Adjusting n_components to {n_components}")
-    
-    print(f"Target dimensioni: {n_components} feature")
-
-    print(f"\nFase 2/3: Applicazione di TruncatedSVD con {n_components} componenti...")
-    svd = TruncatedSVD(n_components=n_components, random_state=42)
-
-    # Applica SVD
-    embeddings = svd.fit_transform(sparse_matrix)
-
-    print(f"Varianza spiegata: {svd.explained_variance_ratio_.sum():.4f}")
-    print(f"Prima componente: {svd.explained_variance_ratio_[0]:.4f}")
-    print(f"Top 10 componenti: {svd.explained_variance_ratio_[:10].sum():.4f}")
-
-    print("\nFase 3/3: Creazione DataFrame per NCF...")
-    # Crea DataFrame con feature SVD
-    svd_df = pd.DataFrame({
-        'movieId': movie_ids.values,
-        **{f'ncf_feature_{i}': embeddings[:, i] for i in range(n_components)}
-    })
-
-    print(f"Dataset finale: {svd_df.shape[0]} righe, {svd_df.shape[1]} colonne.")
-    print(f"Compressione: {sparse_matrix.shape[1]} → {n_components} feature")
-
-    # Salva su disco
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    svd_df.to_csv(output_path, index=False)
-    print(f"\n✅ Feature SVD salvate in: {output_path}")
-
-    return svd_df, svd
 
